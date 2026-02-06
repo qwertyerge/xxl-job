@@ -124,8 +124,8 @@
         "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobLogReportMapperIT 通过"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": "triggerDay 是 datetime 类型的唯一键，Date 对象需截断到天精度。"
+      "passes": true,
+      "notes": "已实现并通过所有测试。关键测试：使用 truncateToDay 工具方法将 Date 截断到天精度以确保 trigger_day 唯一键匹配、ON DUPLICATE KEY UPDATE 的 id 保持不变、queryLogReportTotal 空表返回 null。"
     },
     {
       "id": "US-008",

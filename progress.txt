@@ -127,3 +127,17 @@
   - **Thread.sleep() 异常处理：** JUnit 5 测试方法中使用 `Thread.sleep()` 需要声明 `throws InterruptedException`。
 
 ---
+## 2026-02-06 - US-007 ✅
+- What was implemented:
+  - 创建 XxlJobLogReportMapperIT.java 继承 MapperITBase
+  - 实现 7 个测试方法覆盖所有 Mapper 操作：saveOrUpdate 插入、saveOrUpdate 更新、queryLogReport 日期范围过滤、queryLogReport 空结果、queryLogReportTotal 汇总、queryLogReportTotal 空表
+  - 使用 truncateToDay 工具方法将 Date 截断到天精度，确保 trigger_day 唯一键匹配
+  - 测试结果：Tests run: 7, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobLogReportMapperIT.java (new)
+- **Learnings for future iterations:**
+  - **Date 截断到天精度：** trigger_day 是 datetime 类型的唯一键，测试时必须将 `new Date()` 截断到 00:00:00，避免相同日期但不同时间导致唯一键冲突。使用 `LocalDate.atStartOfDay().toInstant()` 实现截断。
+  - **ON DUPLICATE KEY UPDATE 返回值：** MySQL 的 INSERT...ON DUPLICATE KEY UPDATE 返回值是 affected-rows，不是 id。首次插入返回 2（因为 duplicate-key=1 row + inserted=1 row），更新已有记录返回 2（matched=1 row + updated=1 row）。测试中应验证 `result >= 1` 而不是精确值。
+  - **SUM 聚合空表返回 NULL：** queryLogReportTotal 使用 SUM() 聚合，空表时 SUM 返回 NULL，MyBatis 不会自动创建对象，整个查询返回 null。测试需断言 `total.isNull()` 而不是检查字段值。
+
+---
