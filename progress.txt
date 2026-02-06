@@ -179,3 +179,22 @@
   - **triggerStatus 过滤逻辑：** XML 中使用 `<if test="triggerStatus gte 0">`，意味着 triggerStatus=-1 时不应用过滤条件。测试中触发过滤时传入 0 或 1，不触发过滤时传入 -1。
 
 ---
+
+## 2026-02-06 - US-010 ✅
+- What was implemented:
+  - 在 XxlJobInfoMapperIT.java 中添加 5 个调度相关测试方法
+  - 测试 scheduleJobQuery 返回 triggerStatus=1 且 triggerNextTime <= maxNextTime 的任务
+  - 测试 scheduleJobQuery 不返回 triggerStatus=0 的任务
+  - 测试 scheduleJobQuery 不返回 triggerNextTime > maxNextTime 的任务
+  - 测试 scheduleUpdate 对 triggerStatus=1 的任务更新 triggerLastTime/triggerNextTime/triggerStatus
+  - 测试 scheduleUpdate 对 triggerStatus=0 的任务返回 0（WHERE trigger_status=1 守卫）
+  - 使用 AssertJ 的 isCloseTo(Offset.offset(1000L)) 断言 long 类型时间戳
+  - 测试结果：Tests run: 15, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobInfoMapperIT.java (修改)
+- **Learnings for future iterations:**
+  - **long 类型时间戳比较：** XxlJobInfo 的 triggerLastTime 和 triggerNextTime 是 long 类型（不是 Date）。测试时使用 `isCloseTo(value, Offset.offset(1000L))` 进行时间戳断言，需要显式导入 `org.assertj.core.data.Offset`。
+  - **int 类型 ID 比较：** XxlJobInfo.getId() 返回 int（不是 Integer），在 lambda 表达式中不能调用 `.equals()`，应使用 `==` 比较：`j.getId() == job.getId()`。
+  - **WHERE trigger_status = 1 守卫：** scheduleUpdate SQL 有 `WHERE trigger_status = 1` 条件，防止意外启动已停止的任务。测试需验证两种场景：triggerStatus=1 时更新成功、triggerStatus=0 时返回 0（无更新）。
+
+---

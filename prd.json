@@ -183,8 +183,8 @@
         "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobInfoMapperIT 通过"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": "scheduleUpdate SQL 有 WHERE trigger_status = 1 条件，必须验证此守卫逻辑。"
+      "passes": true,
+      "notes": "已实现并通过所有测试。关键测试：scheduleJobQuery 的 triggerStatus 和 triggerNextTime 过滤条件、scheduleUpdate 的 WHERE trigger_status = 1 守卫逻辑、long 类型时间戳使用 isCloseTo(Offset.offset(1000L)) 断言。"
     },
     {
       "id": "US-011",

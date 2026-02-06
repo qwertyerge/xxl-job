@@ -4,6 +4,7 @@ import com.xxl.job.admin.model.XxlJobInfo;
 import com.xxl.job.admin.test.support.MapperITBase;
 import com.xxl.job.admin.test.support.TestFixtures;
 import org.assertj.core.api.Assertions;
+import org.assertj.core.data.Offset;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -226,5 +227,109 @@ class XxlJobInfoMapperIT extends MapperITBase {
 
         // then
         Assertions.assertThat(thirdPage).hasSize(1);
+    }
+
+    // ========== US-010: Schedule-related tests ==========
+
+    @Test
+    void testScheduleJobQuery_returnsJobsWithTriggerStatusOneAndNextTimeInRange() {
+        // given - job with triggerStatus=1 and triggerNextTime in the past
+        XxlJobInfo job = TestFixtures.createJobInfo();
+        job.setTriggerStatus(1);
+        job.setTriggerNextTime(System.currentTimeMillis() - 1000); // 1 second ago
+        xxlJobInfoMapper.save(job);
+
+        long maxNextTime = System.currentTimeMillis();
+
+        // when
+        List<XxlJobInfo> result = xxlJobInfoMapper.scheduleJobQuery(maxNextTime, 10);
+
+        // then
+        Assertions.assertThat(result)
+                .isNotEmpty()
+                .allMatch(j -> j.getTriggerStatus() == 1)
+                .anyMatch(j -> j.getId() == job.getId());
+    }
+
+    @Test
+    void testScheduleJobQuery_doesNotReturnJobsWithTriggerStatusZero() {
+        // given - job with triggerStatus=0 (stopped)
+        XxlJobInfo stoppedJob = TestFixtures.createJobInfo();
+        stoppedJob.setTriggerStatus(0);
+        stoppedJob.setTriggerNextTime(System.currentTimeMillis() - 1000);
+        xxlJobInfoMapper.save(stoppedJob);
+
+        long maxNextTime = System.currentTimeMillis();
+
+        // when
+        List<XxlJobInfo> result = xxlJobInfoMapper.scheduleJobQuery(maxNextTime, 10);
+
+        // then
+        Assertions.assertThat(result)
+                .noneMatch(j -> j.getId() == stoppedJob.getId());
+    }
+
+    @Test
+    void testScheduleJobQuery_doesNotReturnJobsWithNextTimeGreaterThanMax() {
+        // given - job with triggerStatus=1 but triggerNextTime in the future
+        XxlJobInfo futureJob = TestFixtures.createJobInfo();
+        futureJob.setTriggerStatus(1);
+        futureJob.setTriggerNextTime(System.currentTimeMillis() + 100000); // 100 seconds in future
+        xxlJobInfoMapper.save(futureJob);
+
+        long maxNextTime = System.currentTimeMillis();
+
+        // when
+        List<XxlJobInfo> result = xxlJobInfoMapper.scheduleJobQuery(maxNextTime, 10);
+
+        // then
+        Assertions.assertThat(result)
+                .noneMatch(j -> j.getId() == futureJob.getId());
+    }
+
+    @Test
+    void testScheduleUpdate_updatesFieldsWhenTriggerStatusIsOne() {
+        // given - job with triggerStatus=1
+        XxlJobInfo job = TestFixtures.createJobInfo();
+        job.setTriggerStatus(1);
+        xxlJobInfoMapper.save(job);
+
+        long newLastTime = System.currentTimeMillis();
+        long newNextTime = System.currentTimeMillis() + 5000;
+        job.setTriggerLastTime(newLastTime);
+        job.setTriggerNextTime(newNextTime);
+        job.setTriggerStatus(0); // This should be updated due to WHERE guard
+
+        // when
+        int result = xxlJobInfoMapper.scheduleUpdate(job);
+
+        // then
+        Assertions.assertThat(result).isEqualTo(1);
+        XxlJobInfo updated = xxlJobInfoMapper.loadById(job.getId());
+        Assertions.assertThat(updated.getTriggerLastTime()).isCloseTo(newLastTime, Offset.offset(1000L));
+        Assertions.assertThat(updated.getTriggerNextTime()).isCloseTo(newNextTime, Offset.offset(1000L));
+        Assertions.assertThat(updated.getTriggerStatus()).isEqualTo(0);
+    }
+
+    @Test
+    void testScheduleUpdate_returnsZeroWhenTriggerStatusIsZero() {
+        // given - job with triggerStatus=0 (stopped)
+        XxlJobInfo job = TestFixtures.createJobInfo();
+        job.setTriggerStatus(0);
+        xxlJobInfoMapper.save(job);
+
+        long newLastTime = System.currentTimeMillis();
+        long newNextTime = System.currentTimeMillis() + 5000;
+        job.setTriggerLastTime(newLastTime);
+        job.setTriggerNextTime(newNextTime);
+        job.setTriggerStatus(1); // Try to change to 1
+
+        // when
+        int result = xxlJobInfoMapper.scheduleUpdate(job);
+
+        // then - WHERE trigger_status = 1 guard prevents update
+        Assertions.assertThat(result).isEqualTo(0);
+        XxlJobInfo unchanged = xxlJobInfoMapper.loadById(job.getId());
+        Assertions.assertThat(unchanged.getTriggerStatus()).isEqualTo(0);
     }
 }
