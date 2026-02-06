@@ -145,8 +145,8 @@
         "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobRegistryMapperIT 通过"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": "findDead SQL: WHERE update_time < DATE_ADD(nowTime, INTERVAL -timeout SECOND)。构造时间戳需精确。"
+      "passes": true,
+      "notes": "已实现并通过所有测试。关键测试：findDead 使用 Calendar 构造过期时间戳（2分钟前）验证超时检测、registrySaveOrUpdate 的 ON DUPLICATE KEY UPDATE 基于 (group,key,value) 唯一键、时间断言使用 isCloseTo() 处理 MySQL DATETIME 秒级精度。"
     },
     {
       "id": "US-009",
