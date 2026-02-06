@@ -198,3 +198,59 @@
   - **WHERE trigger_status = 1 守卫：** scheduleUpdate SQL 有 `WHERE trigger_status = 1` 条件，防止意外启动已停止的任务。测试需验证两种场景：triggerStatus=1 时更新成功、triggerStatus=0 时返回 0（无更新）。
 
 ---
+
+## 2026-02-06 - US-011 ✅
+- What was implemented:
+  - 创建 XxlJobLogMapperIT.java 继承 MapperITBase
+  - 实现 12 个测试方法覆盖 CRUD 和分页：save+load, updateTriggerInfo, updateHandleInfo, delete, pageList (多参数过滤)
+  - 测试 pageList 支持 jobGroup/jobId/triggerTime/logStatus 过滤
+  - 测试 logStatus 过滤逻辑：1=成功, 2=失败, 3=运行中
+  - 测试结果：Tests run: 12, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobLogMapperIT.java (new)
+- **Learnings for future iterations:**
+  - **XxlJobLog.save() 只插入 5 个字段：** `INSERT INTO xxl_job_log (job_group, job_id, trigger_time, trigger_code, handle_code)`，不包括 executor_address 和 alarm_status。需要使用 `updateTriggerInfo()` 设置 executor_address，使用 `updateAlarmStatus()` 设置 alarm_status。
+  - **logStatus 过滤逻辑：** 1=成功 (handle_code=200)，2=失败 (trigger_code NOT IN (0, 200) OR handle_code NOT IN (0, 200))，3=运行中 (trigger_code=200 AND handle_code=0)。
+  - **pageList 条件组合：** jobGroup 和 jobId 是互斥过滤条件（jobId==0 时用 jobGroup，jobId>0 时用 jobId）。
+
+---
+
+## 2026-02-06 - US-012 ✅
+- What was implemented:
+  - 在 XxlJobLogMapperIT.java 中添加 11 个报表和清理相关测试
+  - 测试 findLogReport 返回统计 Map，需用 ((Number) map.get(key)).longValue() 断言
+  - 测试 findClearLogIds 支持按 jobGroup/jobId/clearBeforeTime/clearBeforeNum 过滤
+  - 测试 clearLog 批量删除指定 ID
+  - 测试 findFailJobLogIds 只返回失败且 alarm_status=0 的日志
+  - 测试 updateAlarmStatus 乐观锁
+  - 测试 findLostJobIds 的 LEFT JOIN xxl_job_registry
+  - 测试结果：Tests run: 23, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobLogMapperIT.java (修改)
+- **Learnings for future iterations:**
+  - **Map 返回类型断言：** MyBatis 的 Map<String, Object> 聚合查询返回 Long 类型值，断言时需使用 `((Number) map.get(key)).longValue()` 而不是直接 `isEqualTo()`，因为 Integer 和 Long 比较会失败。
+  - **updateAlarmStatus 乐观锁：** 使用 `WHERE alarm_status = oldAlarmStatus` 实现乐观锁，测试需验证：从 0 更新到 1 成功，再从 0 更新到 2 返回 0（已被修改）。
+  - **findLostJobIds LEFT JOIN：** 在 @Transactional 事务中，LEFT JOIN 正常工作。需先使用 XxlJobRegistryMapper.registrySaveOrUpdate() 插入 registry 数据，然后使用 XxlJobLogMapper.updateTriggerInfo() 设置 executor_address。
+  - **alarm_status 字段限制：** XxlJobLog.save() 不插入 alarm_status，需使用 updateAlarmStatus() 设置。测试 findFailJobLogIds 时，已告警的日志 (alarm_status!=0) 不应被返回。
+
+---
+
+## 2026-02-06 - US-013 ✅
+- What was implemented:
+  - 创建 XxlJobLockMapperIT.java 继承 MapperITBase
+  - 实现 3 个测试方法：scheduleLock 基本调用、并发锁超时、多次顺序获取
+  - 使用 TransactionTemplate 手动管理事务（避免依赖 @Transactional 回滚）
+  - 使用 ExecutorService + CountDownLatch 协调线程执行
+  - 线程 A 获取锁并持有，线程 B 设置 innodb_lock_wait_timeout=1 后尝试获取锁
+  - 验证线程 B 抛出 lock wait timeout 异常
+  - 测试结果：Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobLockMapperIT.java (new)
+- **Learnings for future iterations:**
+  - **SELECT ... FOR UPDATE 在 @Transactional 中正常工作：** pessimistic locking 在 Spring @Transactional 事务中按预期工作，会阻塞其他事务获取同一行锁。
+  - **并发测试事务管理：** 使用 TransactionTemplate 手动管理事务，不依赖 @Transactional 回滚。每个线程需要自己的事务上下文。
+  - **innodb_lock_wait_timeout 设置：** `SET SESSION innodb_lock_wait_timeout=1` 是 session 级别设置，只影响当前会话。测试时需在获取锁之前设置。
+  - **CountDownLatch 协调线程：** 使用两个 CountDownLatch 协调线程执行顺序：threadAStarted 通知线程 B 可以开始，threadBFinished 等待线程 B 完成。
+  - **Exception 类型限制：** AtomicReference<Exception> 不能存储 AssertionError，因为 AssertionError 不是 Exception 的子类。需使用 RuntimeException 包装。
+
+---
