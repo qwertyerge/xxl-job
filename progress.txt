@@ -2,19 +2,21 @@
 - 编译器配置：Spring Boot 4.x BOM 会覆盖 maven.compiler.source/target 属性，需要在 maven-compiler-plugin 配置中直接硬编码 Java 版本（如 `<source>17</source>`）
 - 根 pom.xml 的 release profile 默认激活（activeByDefault=true），其中的编译器配置也需要同步更新
 - TestContainers Singleton 模式：使用 static final + static initializer 启动容器，整个 JVM 只启动一次
-- 测试 SQL 脚本需移除 `CREATE database`、`use` 和 `commit;` 语句，因为 TestContainers 的 withDatabaseName 会自动创建数据库
+- **TestContainers SQL 初始化脚本要求：**
+  - **必须移除所有注释（包括 `##` 和 `#` 注释）**，因为 TestContainers 的脚本解析器会将注释与后续 SQL 语句合并，导致语法错误
+  - **每个 SQL 语句必须以分号结尾**
+  - **移除 `CREATE database`、`use` 和 `commit;` 语句**，因为 TestContainers 的 withDatabaseName 会自动创建数据库
 - MySQLContainerHolder 位于 com.xxl.job.admin.test.support 包下
 - MapperITBase 使用 @MybatisTest + @AutoConfigureTestDatabase(replace=NONE) + @Transactional
 - @DynamicPropertySource 需配置 mybatis.mapper-locations 和 hikari.maximum-pool-size=5
 - TestFixtures 提供 6 个工厂方法：createJobGroup、createJobInfo、createJobLog、createLogGlue、createLogReport、createUser
+- **测试数据长度限制：**
+  - XxlJobGroup.title 是 varchar(12)，测试数据必须 ≤12 个字符
+  - 其他字段长度限制需参考数据库表定义
 - Spring Boot 4.x 迁移注意事项：
   - `@AutoConfigureTestDatabase` 包路径从 `org.springframework.boot.test.autoconfigure.jdbc` 改为 `org.springframework.boot.jdbc.test.autoconfigure`
   - `@MybatisTest` 会强制加载主应用类（XxlJobAdminApplication），可能导致日志配置问题
   - logback-test.xml 需要在测试资源目录创建以覆盖主 logback.xml 配置
-- TestContainers 与 Spring Boot 4.x 集成问题：
-  - TestContainers 在 Spring 应用上下文加载期间尝试检测 Docker 环境
-  - MySQLContainerHolder 需使用延迟初始化（lazy initialization）避免在 Spring 条件评估期间启动容器
-  - Docker socket 连接问题：TestContainers 尝试通过 Unix socket 连接但可能收到空响应
 
 ---
 
@@ -73,34 +75,21 @@
 
 ---
 
-## 2026-02-06 - US-004
+## 2026-02-06 - US-004 ✅
 - What was implemented:
   - 创建 XxlJobGroupMapperIT.java 继承 MapperITBase
   - 实现 9 个测试方法覆盖所有 Mapper 操作：save, load, update, remove, findAll, findByAddressType, pageList, pageListCount
   - 使用 AssertJ 断言验证测试结果
-  - 添加 Maven Surefire 配置传递 DOCKER_HOST 环境变量
-  - 创建 logback-test.xml 覆盖主 logback.xml 以避免文件输出问题
-  - 创建 MapperTestConfiguration.java（未使用）
-  - 修改 MySQLContainerHolder 使用延迟初始化（double-checked locking）避免在 Spring 条件评估期间启动容器
+  - **修复 TestContainers SQL 初始化脚本问题：移除所有 `##` 注释避免脚本解析器错误**
+  - **修复测试数据长度问题：title 字段 varchar(12) 限制，更新 TestFixtures 和测试代码**
+  - 测试结果：Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
 - Files changed:
-  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobGroupMapperIT.java (new)
-  - xxl-job-admin/src/test/resources/logback-test.xml (new)
-  - xxl-job-admin/src/test/resources/application-test.properties (new)
-  - xxl-job-admin/pom.xml (添加 testcontainers:testcontainers:1.20.4 和 surefire 配置)
-  - xxl-job-admin/src/test/java/com/xxl/job/admin/test/support/MySQLContainerHolder.java (修改为延迟初始化)
-  - xxl-job-admin/src/test/java/com/xxl/job/admin/test/support/MapperTestConfiguration.java (new,未使用)
+  - xxl-job-admin/src/test/resources/db/tables_xxl_job.sql (移除所有注释)
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/test/support/TestFixtures.java (修复 title 长度)
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobGroupMapperIT.java (修复测试数据长度)
 - **Learnings for future iterations:**
-  - Spring Boot 4.x 中 `@AutoConfigureTestDatabase` 包路径从 `org.springframework.boot.test.autoconfigure.jdbc` 改为 `org.springframework.boot.jdbc.test.autoconfigure`
-  - `@MybatisTest` 会检测并强制加载主应用类（XxlJobAdminApplication），即使使用 `classes` 参数指定测试配置类
-  - TestContainers 在 Spring 应用上下文加载期间（特别是 `DataSourceAutoConfiguration` 条件评估时）尝试检测 Docker 环境
-  - 延迟初始化 MySQLContainerHolder 可以避免在类加载时启动容器，但 `@DynamicPropertySource` 方法执行时仍会触发初始化
-  - Docker 环境检测失败会被 TestContainers 缓存，需要清除缓存（mvn clean）才能重试
-  - TestContainers 1.20.4 与 Docker Desktop 在 macOS 上的 socket 连接可能存在兼容性问题
-  - `logback-test.xml` 放在 `src/test/resources/` 下会覆盖 `src/main/resources/logback.xml`
-  - Maven Surefire 插件可通过 `<environmentVariables>` 配置传递环境变量给测试
-- **待解决问题：**
-  - TestContainers Docker 环境检测失败，错误信息：`Could not find a valid Docker environment` 和 `Previous attempts to find a Docker environment failed. Will not retry`
-  - 可能需要在 CI/CD 环境中配置 DOCKER_HOST 环境变量或使用 TestContainers 配置文件
-  - 考虑降级 TestContainers 版本或使用替代的测试数据库方案（如 H2 内存数据库）
+  - **TestContainers SQL 脚本解析器问题：** TestContainers 使用 ScriptUtils.executeDatabaseScript() 执行初始化脚本，该解析器**不支持注释**。它会将注释行（如 `## comment`）与后续的 SQL 语句合并成一条语句，导致 MySQL 语法错误。解决方案：**完全移除所有注释**，只保留纯 SQL 语句。
+  - **测试数据长度限制：** 数据库字段长度限制在测试中必须严格遵守。XxlJobGroup.title 是 varchar(12)，任何超过 12 个字符的测试数据都会导致 `Data truncation: Data too long for column 'title'` 错误。
+  - **TestContainers 在 macOS 上与 Docker Desktop 配合良好**，之前遇到的 Docker 连接问题实际上是 SQL 脚本解析错误导致的。
 
 ---

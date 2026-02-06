@@ -69,8 +69,8 @@
         "引入org.testcontainers:testcontainers-junit-jupiter依赖, 而不是org.testcontainers:junit-jupiter"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": "代码已实现但测试未通过：TestContainers Docker 环境检测失败。待解决 Docker socket 连接问题或考虑使用 H2 内存数据库替代方案。种子数据有 2 个 group (id=1,2)，findAll/pageList 断言需考虑。"
+      "passes": true,
+      "notes": "已实现并通过所有测试。关键修复：TestContainers SQL 脚本解析器不支持注释，需移除所有 ## 注释；title 字段 varchar(12) 限制，测试数据需符合长度要求。"
     },
     {
       "id": "US-005",
