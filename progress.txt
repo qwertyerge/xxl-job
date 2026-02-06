@@ -1,6 +1,9 @@
 ## Codebase Patterns
 - 编译器配置：Spring Boot 4.x BOM 会覆盖 maven.compiler.source/target 属性，需要在 maven-compiler-plugin 配置中直接硬编码 Java 版本（如 `<source>17</source>`）
 - 根 pom.xml 的 release profile 默认激活（activeByDefault=true），其中的编译器配置也需要同步更新
+- TestContainers Singleton 模式：使用 static final + static initializer 启动容器，整个 JVM 只启动一次
+- 测试 SQL 脚本需移除 `CREATE database`、`use` 和 `commit;` 语句，因为 TestContainers 的 withDatabaseName 会自动创建数据库
+- MySQLContainerHolder 位于 com.xxl.job.admin.test.support 包下
 
 ---
 
@@ -18,4 +21,20 @@
   - Spring Boot 4.x 的 BOM 会覆盖 maven.compiler.source/target 属性为 1.8，必须在 maven-compiler-plugin 中直接硬编码版本号
   - 根 pom.xml 有两处编译器配置：build/plugins 和 profiles/release/build/plugins，两处都需要更新
   - testcontainers-bom 应放在 spring-boot-dependencies 之后
+---
+
+## 2026-02-06 - US-002
+- What was implemented:
+  - 创建 xxl-job-admin/src/test/resources/db/tables_xxl_job.sql，从 doc/db/tables_xxl_job.sql 复制，移除 CREATE database、use 和 commit; 语句
+  - 创建 com.xxl.job.admin.test.support.MySQLContainerHolder 类，使用 static 块启动 mysql:8.4 容器
+  - MySQLContainerHolder 使用 withDatabaseName("xxl_job")、withInitScript("db/tables_xxl_job.sql")
+  - 容器使用 Singleton 模式（static final + static initializer）
+- Files changed:
+  - xxl-job-admin/src/test/resources/db/tables_xxl_job.sql (new)
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/test/support/MySQLContainerHolder.java (new)
+- **Learnings for future iterations:**
+  - TestContainers 的 withDatabaseName 会自动创建数据库，所以 SQL 脚本中不需要 CREATE database 和 use 语句
+  - withInitScript 路径相对于 classpath（test/resources），所以使用 "db/tables_xxl_job.sql"
+  - 种子数据包含：2 个 group (id=1,2)、3 个 job (id=1,2,3)、1 个 user (admin, id=1)、1 个 lock (schedule_lock)
+  - MySQLContainerHolder 暴露 getJdbcUrl/getUsername/getPassword 静态方法供 @DynamicPropertySource 使用
 ---

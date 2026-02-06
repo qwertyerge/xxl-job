@@ -30,7 +30,7 @@
         "编译通过"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "SQL 脚本包含种子数据：2 个 group、3 个 job、1 个 user(admin)、1 个 lock(schedule_lock)。测试需考虑这些预置数据。"
     },
     {
