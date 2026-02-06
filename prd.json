@@ -1,0 +1,245 @@
+{
+  "project": "xxl-job",
+  "branchName": "ralph/mapper-testcontainers",
+  "description": "为 xxl-job-admin 全部 8 个 MyBatis Mapper 引入 TestContainers MySQL 集成测试，使用 @MybatisTest 切片 + AssertJ 断言 + @Transactional 回滚",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "添加 TestContainers Maven 依赖",
+      "description": "As a developer, I want TestContainers dependencies in the POM so that integration tests can use a MySQL container.",
+      "acceptanceCriteria": [
+        "根 pom.xml 的 dependencyManagement 添加 testcontainers-bom:1.20.4 (type=pom, scope=import)",
+        "xxl-job-admin/pom.xml 添加 testcontainers:junit-jupiter (scope=test)",
+        "xxl-job-admin/pom.xml 添加 testcontainers:mysql (scope=test)",
+        "xxl-job-admin/pom.xml 添加 mybatis-spring-boot-starter-test:4.0.1 (scope=test)",
+        "mvn compile -pl xxl-job-admin -am 编译通过"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": "testcontainers-bom 放在 spring-boot-dependencies 之后。mybatis-spring-boot-starter-test 提供 @MybatisTest 注解。"
+    },
+    {
+      "id": "US-002",
+      "title": "创建测试 SQL 脚本和 Singleton 容器",
+      "description": "As a developer, I want a shared MySQL TestContainer with schema initialization so that all mapper tests reuse one container.",
+      "acceptanceCriteria": [
+        "创建 xxl-job-admin/src/test/resources/db/tables_xxl_job.sql，内容从 doc/db/tables_xxl_job.sql 复制，移除末尾 commit; 语句",
+        "创建 com.xxl.job.admin.test.support.MySQLContainerHolder 类，使用 static 块启动 mysql:8.4 容器",
+        "MySQLContainerHolder 使用 withDatabaseName(\"xxl_job\")、withInitScript(\"db/tables_xxl_job.sql\")",
+        "容器使用 Singleton 模式（static final + static initializer），整个 JVM 生命周期只启动一次",
+        "编译通过"
+      ],
+      "priority": 2,
+      "passes": true,
+      "notes": "SQL 脚本包含种子数据：2 个 group、3 个 job、1 个 user(admin)、1 个 lock(schedule_lock)。测试需考虑这些预置数据。"
+    },
+    {
+      "id": "US-003",
+      "title": "创建 MapperITBase 抽象基类和 TestFixtures 工厂",
+      "description": "As a developer, I want a base test class and fixture factory so that all mapper IT classes share common configuration.",
+      "acceptanceCriteria": [
+        "创建 com.xxl.job.admin.test.support.MapperITBase 抽象类",
+        "MapperITBase 使用 @MybatisTest + @AutoConfigureTestDatabase(replace=NONE) + @Transactional",
+        "MapperITBase 使用 @DynamicPropertySource 从 MySQLContainerHolder 注入 datasource URL/username/password",
+        "MapperITBase 注入 JdbcTemplate 供子类使用",
+        "创建 com.xxl.job.admin.test.support.TestFixtures 工厂类，提供 createJobGroup、createJobInfo、createJobLog、createLogGlue、createLogReport、createUser 静态方法",
+        "每个工厂方法返回最小有效对象（所有 NOT NULL 字段已填充）",
+        "编译通过"
+      ],
+      "priority": 3,
+      "passes": true,
+      "notes": "mybatis.mapper-locations=classpath:/mapper/*Mapper.xml 需在 @DynamicPropertySource 中配置。HikariCP maximum-pool-size 设为 5 避免容器连接耗尽。"
+    },
+    {
+      "id": "US-004",
+      "title": "XxlJobGroupMapper 集成测试",
+      "description": "As a developer, I want integration tests for XxlJobGroupMapper to verify all 8 SQL operations against a real MySQL.",
+      "acceptanceCriteria": [
+        "创建 XxlJobGroupMapperIT.java 继承 MapperITBase",
+        "测试 save() 返回 1 且自增 id > 0",
+        "测试 load(id) 返回保存的对象，字段匹配",
+        "测试 load(-999) 返回 null",
+        "测试 update() 修改 appname/title 后 load 验证变更",
+        "测试 remove() 后 load 返回 null",
+        "测试 findAll() 包含新保存的 group",
+        "测试 findByAddressType() 只返回匹配的 addressType",
+        "测试 pageList/pageListCount 一致性，验证 appname 模糊搜索",
+        "所有断言使用 AssertJ",
+        "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobGroupMapperIT 通过",
+        "引入org.testcontainers:testcontainers-junit-jupiter依赖, 而不是org.testcontainers:junit-jupiter"
+      ],
+      "priority": 4,
+      "passes": true,
+      "notes": "已实现并通过所有测试。关键修复：TestContainers SQL 脚本解析器不支持注释，需移除所有 ## 注释；title 字段 varchar(12) 限制，测试数据需符合长度要求。"
+    },
+    {
+      "id": "US-005",
+      "title": "XxlJobUserMapper 集成测试（新增）",
+      "description": "As a developer, I want integration tests for XxlJobUserMapper to verify all 8 methods including conditional password update.",
+      "acceptanceCriteria": [
+        "创建 XxlJobUserMapperIT.java 继承 MapperITBase",
+        "测试 save + loadById 往返，字段匹配",
+        "测试 loadByUserName 精确匹配",
+        "测试 loadByUserName 不存在的用户返回 null",
+        "测试 update 修改 role/permission 后验证变更",
+        "测试 update 当 password 为 null 时不更新密码（XML 中有 <if> 条件）",
+        "测试 delete 后 loadById 返回 null",
+        "测试 updateToken 只修改 token 字段",
+        "测试 pageList/pageListCount 的 username 模糊搜索和 role 过滤",
+        "所有断言使用 AssertJ",
+        "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobUserMapperIT 通过"
+      ],
+      "priority": 5,
+      "passes": true,
+      "notes": "已实现并通过所有测试。关键测试：update 方法的 <if test=\"password != null and password != ''\"> 条件逻辑、updateToken 只修改 token 字段、pageList 支持按 username 和 role 过滤。"
+    },
+    {
+      "id": "US-006",
+      "title": "XxlJobLogGlueMapper 集成测试",
+      "description": "As a developer, I want integration tests for XxlJobLogGlueMapper to verify GLUE code version management.",
+      "acceptanceCriteria": [
+        "创建 XxlJobLogGlueMapperIT.java 继承 MapperITBase",
+        "测试 save + findByJobId 往返，验证返回列表按 id DESC 排序",
+        "测试 findByJobId 不存在的 jobId 返回空列表",
+        "测试 removeOld(jobId, 2) 保留最新 2 条记录（先插入 5 条，验证剩余 2 条）",
+        "测试 deleteByJobId 清除指定 job 的全部 glue 记录",
+        "所有断言使用 AssertJ",
+        "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobLogGlueMapperIT 通过"
+      ],
+      "priority": 6,
+      "passes": true,
+      "notes": "已实现并通过所有测试。关键测试：removeOld 使用子查询保留最新 N 条（按 update_time DESC），测试时通过 Thread.sleep(10) 确保每条记录有不同的 update_time。"
+    },
+    {
+      "id": "US-007",
+      "title": "XxlJobLogReportMapper 集成测试",
+      "description": "As a developer, I want integration tests for XxlJobLogReportMapper to verify ON DUPLICATE KEY UPDATE and aggregation queries.",
+      "acceptanceCriteria": [
+        "创建 XxlJobLogReportMapperIT.java 继承 MapperITBase",
+        "测试 saveOrUpdate 插入新记录（新 triggerDay）",
+        "测试 saveOrUpdate 对相同 triggerDay 执行更新（ON DUPLICATE KEY UPDATE 路径）",
+        "测试 queryLogReport 日期范围过滤，验证只返回范围内记录且按 triggerDay ASC 排序",
+        "测试 queryLogReportTotal 汇总所有记录的 running/suc/fail 总和",
+        "所有断言使用 AssertJ",
+        "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobLogReportMapperIT 通过"
+      ],
+      "priority": 7,
+      "passes": true,
+      "notes": "已实现并通过所有测试。关键测试：使用 truncateToDay 工具方法将 Date 截断到天精度以确保 trigger_day 唯一键匹配、ON DUPLICATE KEY UPDATE 的 id 保持不变、queryLogReportTotal 空表返回 null。"
+    },
+    {
+      "id": "US-008",
+      "title": "XxlJobRegistryMapper 集成测试",
+      "description": "As a developer, I want integration tests for XxlJobRegistryMapper to verify executor registration and heartbeat timeout detection.",
+      "acceptanceCriteria": [
+        "创建 XxlJobRegistryMapperIT.java 继承 MapperITBase",
+        "测试 registrySaveOrUpdate 插入新注册记录",
+        "测试 registrySaveOrUpdate 对相同 (group,key,value) 更新 updateTime",
+        "测试 findDead 返回 updateTime 超时的注册 ID（构造 2 分钟前的 updateTime，timeout=60）",
+        "测试 findDead 不返回新鲜的注册记录",
+        "测试 findAll 只返回存活注册（updateTime 未超时）",
+        "测试 removeDead 批量删除指定 ID",
+        "测试 registryDelete 精确删除 (group,key,value)",
+        "测试 removeByRegistryGroupAndKey 删除 (group,key) 下所有 value",
+        "所有断言使用 AssertJ",
+        "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobRegistryMapperIT 通过"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "已实现并通过所有测试。关键测试：findDead 使用 Calendar 构造过期时间戳（2分钟前）验证超时检测、registrySaveOrUpdate 的 ON DUPLICATE KEY UPDATE 基于 (group,key,value) 唯一键、时间断言使用 isCloseTo() 处理 MySQL DATETIME 秒级精度。"
+    },
+    {
+      "id": "US-009",
+      "title": "XxlJobInfoMapper 集成测试 - CRUD 和分页",
+      "description": "As a developer, I want integration tests for XxlJobInfoMapper basic CRUD and pagination operations.",
+      "acceptanceCriteria": [
+        "创建 XxlJobInfoMapperIT.java 继承 MapperITBase",
+        "测试 save() 返回 1 且自增 id > 0",
+        "测试 loadById(id) 返回保存的对象，字段匹配",
+        "测试 update() 修改 jobDesc/author 后 loadById 验证变更",
+        "测试 delete() 后 loadById 返回 null",
+        "测试 getJobsByGroup() 只返回指定 group 的任务",
+        "测试 findAllCount() 反映插入操作（before + N = after）",
+        "测试 pageList/pageListCount 一致性，验证 jobDesc/author/triggerStatus 过滤",
+        "所有断言使用 AssertJ",
+        "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobInfoMapperIT 通过"
+      ],
+      "priority": 9,
+      "passes": true,
+      "notes": "已实现并通过所有测试。关键测试：pageList 支持 jobDesc/executorHandler/author 多参数模糊搜索、triggerStatus 精确过滤、分页查询验证。种子数据有 3 个 job (id=1,2,3)，findAllCount 使用 before + N = after 模式验证。"
+    },
+    {
+      "id": "US-010",
+      "title": "XxlJobInfoMapper 集成测试 - 调度查询和更新",
+      "description": "As a developer, I want integration tests for XxlJobInfoMapper schedule-related operations to verify trigger status guards.",
+      "acceptanceCriteria": [
+        "在 XxlJobInfoMapperIT.java 中添加调度相关测试方法",
+        "测试 scheduleJobQuery 返回 triggerStatus=1 且 triggerNextTime <= maxNextTime 的任务",
+        "测试 scheduleJobQuery 不返回 triggerStatus=0 的任务",
+        "测试 scheduleJobQuery 不返回 triggerNextTime > maxNextTime 的任务",
+        "测试 scheduleUpdate 对 triggerStatus=1 的任务更新 triggerLastTime/triggerNextTime/triggerStatus",
+        "测试 scheduleUpdate 对 triggerStatus=0 的任务返回 0（WHERE trigger_status=1 守卫）",
+        "所有断言使用 AssertJ",
+        "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobInfoMapperIT 通过"
+      ],
+      "priority": 10,
+      "passes": true,
+      "notes": "已实现并通过所有测试。关键测试：scheduleJobQuery 的 triggerStatus 和 triggerNextTime 过滤条件、scheduleUpdate 的 WHERE trigger_status = 1 守卫逻辑、long 类型时间戳使用 isCloseTo(Offset.offset(1000L)) 断言。"
+    },
+    {
+      "id": "US-011",
+      "title": "XxlJobLogMapper 集成测试 - CRUD 和分页",
+      "description": "As a developer, I want integration tests for XxlJobLogMapper basic CRUD, trigger/handle updates, and pagination.",
+      "acceptanceCriteria": [
+        "创建 XxlJobLogMapperIT.java 继承 MapperITBase",
+        "测试 save + load 往返，字段匹配",
+        "测试 updateTriggerInfo 修改 trigger_time/trigger_code/trigger_msg/executor_* 字段",
+        "测试 updateHandleInfo 修改 handle_time/handle_code/handle_msg",
+        "测试 delete(jobId) 删除指定 job 的全部日志",
+        "测试 pageList/pageListCount 一致性，验证 jobGroup/jobId/triggerTime/logStatus 过滤",
+        "所有断言使用 AssertJ",
+        "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobLogMapperIT 通过"
+      ],
+      "priority": 11,
+      "passes": true,
+      "notes": "已实现并通过 12 个测试。关键发现：XxlJobLog.save() 只插入 5 个字段，不包括 executor_address 和 alarm_status。需要使用 updateTriggerInfo() 设置 executor_address，使用 updateAlarmStatus() 设置 alarm_status。"
+    },
+    {
+      "id": "US-012",
+      "title": "XxlJobLogMapper 集成测试 - 报表统计和日志清理",
+      "description": "As a developer, I want integration tests for XxlJobLogMapper report, clear, alarm, and lost-job detection operations.",
+      "acceptanceCriteria": [
+        "在 XxlJobLogMapperIT.java 中添加报表和清理相关测试",
+        "测试 findLogReport 返回指定日期范围内的统计（triggerDayCount/triggerDayCountRunning/triggerDayCountSuc）",
+        "测试 findClearLogIds 返回符合清理条件的日志 ID",
+        "测试 clearLog 批量删除指定 ID 的日志",
+        "测试 findFailJobLogIds 只返回 trigger_code!=200 或 handle_code!=200 且 alarm_status=0 的日志",
+        "测试 updateAlarmStatus 乐观锁：从 0 更新到 1 返回 1，再从 0 更新到 2 返回 0（已被修改）",
+        "测试 findLostJobIds 返回 trigger_code=200、handle_code=0、trigger_time 过期且 executor_address 不在 registry 中的日志",
+        "所有断言使用 AssertJ",
+        "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobLogMapperIT 通过"
+      ],
+      "priority": 12,
+      "passes": true,
+      "notes": "已实现并通过 11 个测试（总计 23 个）。关键发现：findLogReport 返回的 Map 使用 Long 类型值，断言时需使用 ((Number) map.get(key)).longValue()；findLostJobIds 的 LEFT JOIN 在同一事务中正常工作；updateAlarmStatus 使用 WHERE alarm_status = oldAlarmStatus 实现乐观锁。"
+    },
+    {
+      "id": "US-013",
+      "title": "XxlJobLockMapper 集成测试（新增）",
+      "description": "As a developer, I want integration tests for XxlJobLockMapper to verify SELECT ... FOR UPDATE pessimistic locking behavior.",
+      "acceptanceCriteria": [
+        "创建 XxlJobLockMapperIT.java 继承 MapperITBase",
+        "测试 scheduleLock() 基本调用返回 lock_name 值",
+        "测试并发场景：使用 TransactionTemplate 手动管理事务",
+        "并发测试：线程 A 通过 TransactionTemplate 获取锁并持有，线程 B 设置 innodb_lock_wait_timeout=1 后尝试获取锁",
+        "验证线程 B 抛出 lock wait timeout 异常",
+        "使用 ExecutorService + CountDownLatch 协调线程",
+        "所有断言使用 AssertJ",
+        "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobLockMapperIT 通过"
+      ],
+      "priority": 13,
+      "passes": true,
+      "notes": "已实现并通过 3 个测试。关键发现：SELECT ... FOR UPDATE 在 @Transactional 事务中正常工作；并发测试使用 TransactionTemplate 手动管理事务；SET innodb_lock_wait_timeout=1 是 session 级别设置；CountDownLatch 用于协调线程执行顺序。"
+    }
+  ]
+}

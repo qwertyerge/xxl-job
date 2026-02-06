@@ -1,0 +1,256 @@
+## Codebase Patterns
+- 编译器配置：Spring Boot 4.x BOM 会覆盖 maven.compiler.source/target 属性，需要在 maven-compiler-plugin 配置中直接硬编码 Java 版本（如 `<source>17</source>`）
+- 根 pom.xml 的 release profile 默认激活（activeByDefault=true），其中的编译器配置也需要同步更新
+- TestContainers Singleton 模式：使用 static final + static initializer 启动容器，整个 JVM 只启动一次
+- **TestContainers SQL 初始化脚本要求：**
+  - **必须移除所有注释（包括 `##` 和 `#` 注释）**，因为 TestContainers 的脚本解析器会将注释与后续 SQL 语句合并，导致语法错误
+  - **每个 SQL 语句必须以分号结尾**
+  - **移除 `CREATE database`、`use` 和 `commit;` 语句**，因为 TestContainers 的 withDatabaseName 会自动创建数据库
+- MySQLContainerHolder 位于 com.xxl.job.admin.test.support 包下
+- MapperITBase 使用 @MybatisTest + @AutoConfigureTestDatabase(replace=NONE) + @Transactional
+- @DynamicPropertySource 需配置 mybatis.mapper-locations 和 hikari.maximum-pool-size=5
+- TestFixtures 提供 6 个工厂方法：createJobGroup、createJobInfo、createJobLog、createLogGlue、createLogReport、createUser
+- **测试数据长度限制：**
+  - XxlJobGroup.title 是 varchar(12)，测试数据必须 ≤12 个字符
+  - 其他字段长度限制需参考数据库表定义
+- Spring Boot 4.x 迁移注意事项：
+  - `@AutoConfigureTestDatabase` 包路径从 `org.springframework.boot.test.autoconfigure.jdbc` 改为 `org.springframework.boot.jdbc.test.autoconfigure`
+  - `@MybatisTest` 会强制加载主应用类（XxlJobAdminApplication），可能导致日志配置问题
+  - logback-test.xml 需要在测试资源目录创建以覆盖主 logback.xml 配置
+
+---
+
+## 2026-02-06 - US-001
+- What was implemented:
+  - 在根 pom.xml 的 dependencyManagement 添加 testcontainers-bom:1.20.4
+  - 在 xxl-job-admin/pom.xml 添加 testcontainers:junit-jupiter (scope=test)
+  - 在 xxl-job-admin/pom.xml 添加 testcontainers:mysql (scope=test)
+  - 在 xxl-job-admin/pom.xml 添加 mybatis-spring-boot-starter-test:4.0.1 (scope=test)
+  - 修复编译器配置以确保使用 Java 17
+- Files changed:
+  - pom.xml
+  - xxl-job-admin/pom.xml
+- **Learnings for future iterations:**
+  - Spring Boot 4.x 的 BOM 会覆盖 maven.compiler.source/target 属性为 1.8，必须在 maven-compiler-plugin 中直接硬编码版本号
+  - 根 pom.xml 有两处编译器配置：build/plugins 和 profiles/release/build/plugins，两处都需要更新
+  - testcontainers-bom 应放在 spring-boot-dependencies 之后
+
+---
+
+## 2026-02-06 - US-002
+- What was implemented:
+  - 创建 xxl-job-admin/src/test/resources/db/tables_xxl_job.sql，从 doc/db/tables_xxl_job.sql 复制，移除 CREATE database、use 和 commit; 语句
+  - 创建 com.xxl.job.admin.test.support.MySQLContainerHolder 类，使用 static 块启动 mysql:8.4 容器
+  - MySQLContainerHolder 使用 withDatabaseName("xxl_job")、withInitScript("db/tables_xxl_job.sql")
+  - 容器使用 Singleton 模式（static final + static initializer）
+- Files changed:
+  - xxl-job-admin/src/test/resources/db/tables_xxl_job.sql (new)
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/test/support/MySQLContainerHolder.java (new)
+- **Learnings for future iterations:**
+  - TestContainers 的 withDatabaseName 会自动创建数据库，所以 SQL 脚本中不需要 CREATE database 和 use 语句
+  - withInitScript 路径相对 classpath（test/resources），所以使用 "db/tables_xxl_job.sql"
+  - 种子数据包含：2 个 group (id=1,2)、3 个 job (id=1,2,3)、1 个 user (admin, id=1)、1 个 lock (schedule_lock)
+  - MySQLContainerHolder 暴露 getJdbcUrl/getUsername/getPassword 静态方法供 @DynamicPropertySource 使用
+
+---
+
+## 2026-02-06 - US-003
+- What was implemented:
+  - 创建 com.xxl.job.admin.test.support.MapperITBase 抽象基类
+  - MapperITBase 使用 @MybatisTest + @AutoConfigureTestDatabase(replace=NONE) + @Transactional
+  - @DynamicPropertySource 从 MySQLContainerHolder 注入 datasource URL/username/password
+  - 配置 mybatis.mapper-locations 和 spring.datasource.hikari.maximum-pool-size=5
+  - 注入 JdbcTemplate 供子类使用
+  - 创建 com.xxl.job.admin.test.support.TestFixtures 工厂类
+  - 提供 createJobGroup、createJobInfo、createJobLog、createLogGlue、createLogReport、createUser 6 个静态方法
+  - 每个工厂方法返回最小有效对象（所有 NOT NULL 字段已填充）
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/test/support/MapperITBase.java (new)
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/test/support/TestFixtures.java (new)
+- **Learnings for future iterations:**
+  - @MybatisTest 切片不会自动配置 mybatis.mapper-locations，需在 @DynamicPropertySource 中显式设置
+  - HikariCP maximum-pool-size 设为 5 避免 TestContainer 连接耗尽
+  - 实体类 NOT NULL 字段清单：XxlJobGroup(appname,title), XxlJobInfo(jobGroup,jobDesc,scheduleType,misfireStrategy,glueType), XxlJobLog(jobGroup,jobId,triggerCode,handleCode), XxlJobLogGlue(jobId,glueRemark), XxlJobLogReport(triggerDay唯一键), XxlJobUser(username,password,role)
+  - XxlJobRegistry 没有对应的 model setter 用于 updateTime，注册操作通过 Mapper 参数直接传入
+
+---
+
+## 2026-02-06 - US-004 ✅
+- What was implemented:
+  - 创建 XxlJobGroupMapperIT.java 继承 MapperITBase
+  - 实现 9 个测试方法覆盖所有 Mapper 操作：save, load, update, remove, findAll, findByAddressType, pageList, pageListCount
+  - 使用 AssertJ 断言验证测试结果
+  - **修复 TestContainers SQL 初始化脚本问题：移除所有 `##` 注释避免脚本解析器错误**
+  - **修复测试数据长度问题：title 字段 varchar(12) 限制，更新 TestFixtures 和测试代码**
+  - 测试结果：Tests run: 9, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/resources/db/tables_xxl_job.sql (移除所有注释)
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/test/support/TestFixtures.java (修复 title 长度)
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobGroupMapperIT.java (修复测试数据长度)
+- **Learnings for future iterations:**
+  - **TestContainers SQL 脚本解析器问题：** TestContainers 使用 ScriptUtils.executeDatabaseScript() 执行初始化脚本，该解析器**不支持注释**。它会将注释行（如 `## comment`）与后续的 SQL 语句合并成一条语句，导致 MySQL 语法错误。解决方案：**完全移除所有注释**，只保留纯 SQL 语句。
+  - **测试数据长度限制：** 数据库字段长度限制在测试中必须严格遵守。XxlJobGroup.title 是 varchar(12)，任何超过 12 个字符的测试数据都会导致 `Data truncation: Data too long for column 'title'` 错误。
+  - **TestContainers 在 macOS 上与 Docker Desktop 配合良好**，之前遇到的 Docker 连接问题实际上是 SQL 脚本解析错误导致的。
+
+---
+
+## 2026-02-06 - US-005 ✅
+- What was implemented:
+  - 创建 XxlJobUserMapperIT.java 继承 MapperITBase
+  - 实现 8 个测试方法覆盖所有 Mapper 操作：save, loadById, loadByUserName, update, delete, updateToken, pageList, pageListCount
+  - 使用 AssertJ 断言验证测试结果
+  - 测试 update 方法的条件密码更新逻辑：<if test="password != null and password != ''">
+  - 测试 pageList 支持按 username 模糊搜索和 role 精确过滤
+  - 测试结果：Tests run: 8, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobUserMapperIT.java (new)
+- **Learnings for future iterations:**
+  - **MyBatis <if> 条件语句测试：** update 方法的 `<if test="password != null and password != ''">` 条件逻辑需要在测试中验证两种场景：password 有值时更新、password 为 null 或空字符串时不更新。
+  - **pageList 多参数过滤：** XxlJobUserMapper.pageList 支持 username（模糊搜索）和 role（精确匹配）两个独立过滤参数，测试时需验证：单独过滤 username、单独过滤 role、同时过滤两个参数。
+  - **种子数据影响：** 初始 SQL 脚本包含 admin 用户 (id=1, username=admin, role=1)，测试需确保不与种子数据冲突（使用不同的 username）。
+
+---
+
+## 2026-02-06 - US-006 ✅
+- What was implemented:
+  - 创建 XxlJobLogGlueMapperIT.java 继承 MapperITBase
+  - 实现 5 个测试方法覆盖所有 Mapper 操作：save, findByJobId, removeOld, deleteByJobId
+  - 使用 AssertJ 断言验证测试结果
+  - 测试 removeOld 使用子查询保留最新 N 条记录（按 update_time DESC）
+  - 测试 findByJobId 返回的列表按 id DESC 排序
+  - 测试结果：Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobLogGlueMapperIT.java (new)
+- **Learnings for future iterations:**
+  - **removeOld 子查询逻辑：** SQL 使用 `DELETE FROM xxl_job_logglue WHERE id NOT in(SELECT id FROM(SELECT id FROM xxl_job_logglue WHERE job_id = #{jobId} ORDER BY update_time desc LIMIT 0, #{limit}) t1) AND job_id = #{jobId}` 保留最新 N 条记录。测试时需确保每条记录有不同的 update_time，通过 `Thread.sleep(10)` 或手动设置时间戳实现。
+  - **orderBy 验证：** findByJobId 返回的列表应该按 id DESC 排序，测试时需验证 `list.get(0).getId() > list.get(1).getId()`。
+  - **Thread.sleep() 异常处理：** JUnit 5 测试方法中使用 `Thread.sleep()` 需要声明 `throws InterruptedException`。
+
+---
+## 2026-02-06 - US-007 ✅
+- What was implemented:
+  - 创建 XxlJobLogReportMapperIT.java 继承 MapperITBase
+  - 实现 7 个测试方法覆盖所有 Mapper 操作：saveOrUpdate 插入、saveOrUpdate 更新、queryLogReport 日期范围过滤、queryLogReport 空结果、queryLogReportTotal 汇总、queryLogReportTotal 空表
+  - 使用 truncateToDay 工具方法将 Date 截断到天精度，确保 trigger_day 唯一键匹配
+  - 测试结果：Tests run: 7, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobLogReportMapperIT.java (new)
+- **Learnings for future iterations:**
+  - **Date 截断到天精度：** trigger_day 是 datetime 类型的唯一键，测试时必须将 `new Date()` 截断到 00:00:00，避免相同日期但不同时间导致唯一键冲突。使用 `LocalDate.atStartOfDay().toInstant()` 实现截断。
+  - **ON DUPLICATE KEY UPDATE 返回值：** MySQL 的 INSERT...ON DUPLICATE KEY UPDATE 返回值是 affected-rows，不是 id。首次插入返回 2（因为 duplicate-key=1 row + inserted=1 row），更新已有记录返回 2（matched=1 row + updated=1 row）。测试中应验证 `result >= 1` 而不是精确值。
+  - **SUM 聚合空表返回 NULL：** queryLogReportTotal 使用 SUM() 聚合，空表时 SUM 返回 NULL，MyBatis 不会自动创建对象，整个查询返回 null。测试需断言 `total.isNull()` 而不是检查字段值。
+
+---
+
+## 2026-02-06 - US-008 ✅
+- What was implemented:
+  - 创建 XxlJobRegistryMapperIT.java 继承 MapperITBase
+  - 实现 10 个测试方法覆盖所有 Mapper 操作：registrySaveOrUpdate (插入和更新)、findDead、removeDead、findAll、registryDelete、removeByRegistryGroupAndKey
+  - 使用 AssertJ 断言验证测试结果
+  - 测试 findDead 使用 Calendar 构造过期时间戳（2分钟前）验证超时检测逻辑
+  - 测试 findAll 验证只返回存活注册（未超时）
+  - 测试 removeDead 批量删除指定 ID
+  - 测试 registryDelete 精确删除 (group, key, value)
+  - 测试 removeByRegistryGroupAndKey 批量删除 (group, key) 下所有 value
+  - 测试结果：Tests run: 10, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobRegistryMapperIT.java (new)
+- **Learnings for future iterations:**
+  - **MySQL DATETIME 精度问题：** MySQL DATETIME 字段精度到秒，而 Java Date 精度到毫秒。直接使用 `isEqualTo()` 比较会失败，应使用 AssertJ 的 `isCloseTo(expected, 1000L)` 方法（允许 1 秒误差）或截断到秒精度后再比较。
+  - **ON DUPLICATE KEY UPDATE 测试策略：** xxl_job_registry 表有唯一键 `i_g_k_v (registry_group, registry_key, registry_value)`。测试更新场景时，应使用相同的 (group, key, value) 但不同的 update_time 来触发更新路径，而不是修改 value 字段。
+  - **时间戳构造技巧：** 使用 `Calendar.getInstance().add(Calendar.MINUTE, -2)` 构造 2 分钟前的时间戳来测试 findDead 超时检测。使用 `new Date(System.currentTimeMillis() - 120000)` 也可以，但 Calendar API 更语义化。
+  - **findDead 测试注意事项：** findDead SQL 使用 `WHERE update_time < DATE_ADD(#{nowTime}, INTERVAL -#{timeout} SECOND)`。测试时需要确保构造的 updateTime 确实小于 `nowTime - timeout`，否则测试会失败。
+
+---
+## 2026-02-06 - US-009 ✅
+- What was implemented:
+  - 创建 XxlJobInfoMapperIT.java 继承 MapperITBase
+  - 实现 10 个测试方法覆盖所有 Mapper 操作：save, loadById, update, delete, getJobsByGroup, findAllCount, pageList (多参数过滤)
+  - 使用 AssertJ 断言验证测试结果
+  - 测试 pageList 支持 jobDesc/executorHandler/author 多参数模糊搜索
+  - 测试 pageList 支持 triggerStatus 精确过滤（0=停止，1=运行）
+  - 测试 pageList 分页查询（offset, pagesize）
+  - 测试结果：Tests run: 10, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobInfoMapperIT.java (new)
+- **Learnings for future iterations:**
+  - **种子数据影响计数：** 初始 SQL 脚本包含 3 个 job (id=1,2,3)，findAllCount 测试使用 `before + N = after` 模式验证插入效果，避免断言绝对值。
+  - **pageList 多参数过滤：** XxlJobInfoMapper.pageList 支持 jobGroup（精确）、triggerStatus（精确）、jobDesc（模糊）、executorHandler（模糊）、author（模糊）五个独立过滤参数。测试时需验证：单独过滤、组合过滤。
+  - **triggerStatus 过滤逻辑：** XML 中使用 `<if test="triggerStatus gte 0">`，意味着 triggerStatus=-1 时不应用过滤条件。测试中触发过滤时传入 0 或 1，不触发过滤时传入 -1。
+
+---
+
+## 2026-02-06 - US-010 ✅
+- What was implemented:
+  - 在 XxlJobInfoMapperIT.java 中添加 5 个调度相关测试方法
+  - 测试 scheduleJobQuery 返回 triggerStatus=1 且 triggerNextTime <= maxNextTime 的任务
+  - 测试 scheduleJobQuery 不返回 triggerStatus=0 的任务
+  - 测试 scheduleJobQuery 不返回 triggerNextTime > maxNextTime 的任务
+  - 测试 scheduleUpdate 对 triggerStatus=1 的任务更新 triggerLastTime/triggerNextTime/triggerStatus
+  - 测试 scheduleUpdate 对 triggerStatus=0 的任务返回 0（WHERE trigger_status=1 守卫）
+  - 使用 AssertJ 的 isCloseTo(Offset.offset(1000L)) 断言 long 类型时间戳
+  - 测试结果：Tests run: 15, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobInfoMapperIT.java (修改)
+- **Learnings for future iterations:**
+  - **long 类型时间戳比较：** XxlJobInfo 的 triggerLastTime 和 triggerNextTime 是 long 类型（不是 Date）。测试时使用 `isCloseTo(value, Offset.offset(1000L))` 进行时间戳断言，需要显式导入 `org.assertj.core.data.Offset`。
+  - **int 类型 ID 比较：** XxlJobInfo.getId() 返回 int（不是 Integer），在 lambda 表达式中不能调用 `.equals()`，应使用 `==` 比较：`j.getId() == job.getId()`。
+  - **WHERE trigger_status = 1 守卫：** scheduleUpdate SQL 有 `WHERE trigger_status = 1` 条件，防止意外启动已停止的任务。测试需验证两种场景：triggerStatus=1 时更新成功、triggerStatus=0 时返回 0（无更新）。
+
+---
+
+## 2026-02-06 - US-011 ✅
+- What was implemented:
+  - 创建 XxlJobLogMapperIT.java 继承 MapperITBase
+  - 实现 12 个测试方法覆盖 CRUD 和分页：save+load, updateTriggerInfo, updateHandleInfo, delete, pageList (多参数过滤)
+  - 测试 pageList 支持 jobGroup/jobId/triggerTime/logStatus 过滤
+  - 测试 logStatus 过滤逻辑：1=成功, 2=失败, 3=运行中
+  - 测试结果：Tests run: 12, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobLogMapperIT.java (new)
+- **Learnings for future iterations:**
+  - **XxlJobLog.save() 只插入 5 个字段：** `INSERT INTO xxl_job_log (job_group, job_id, trigger_time, trigger_code, handle_code)`，不包括 executor_address 和 alarm_status。需要使用 `updateTriggerInfo()` 设置 executor_address，使用 `updateAlarmStatus()` 设置 alarm_status。
+  - **logStatus 过滤逻辑：** 1=成功 (handle_code=200)，2=失败 (trigger_code NOT IN (0, 200) OR handle_code NOT IN (0, 200))，3=运行中 (trigger_code=200 AND handle_code=0)。
+  - **pageList 条件组合：** jobGroup 和 jobId 是互斥过滤条件（jobId==0 时用 jobGroup，jobId>0 时用 jobId）。
+
+---
+
+## 2026-02-06 - US-012 ✅
+- What was implemented:
+  - 在 XxlJobLogMapperIT.java 中添加 11 个报表和清理相关测试
+  - 测试 findLogReport 返回统计 Map，需用 ((Number) map.get(key)).longValue() 断言
+  - 测试 findClearLogIds 支持按 jobGroup/jobId/clearBeforeTime/clearBeforeNum 过滤
+  - 测试 clearLog 批量删除指定 ID
+  - 测试 findFailJobLogIds 只返回失败且 alarm_status=0 的日志
+  - 测试 updateAlarmStatus 乐观锁
+  - 测试 findLostJobIds 的 LEFT JOIN xxl_job_registry
+  - 测试结果：Tests run: 23, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobLogMapperIT.java (修改)
+- **Learnings for future iterations:**
+  - **Map 返回类型断言：** MyBatis 的 Map<String, Object> 聚合查询返回 Long 类型值，断言时需使用 `((Number) map.get(key)).longValue()` 而不是直接 `isEqualTo()`，因为 Integer 和 Long 比较会失败。
+  - **updateAlarmStatus 乐观锁：** 使用 `WHERE alarm_status = oldAlarmStatus` 实现乐观锁，测试需验证：从 0 更新到 1 成功，再从 0 更新到 2 返回 0（已被修改）。
+  - **findLostJobIds LEFT JOIN：** 在 @Transactional 事务中，LEFT JOIN 正常工作。需先使用 XxlJobRegistryMapper.registrySaveOrUpdate() 插入 registry 数据，然后使用 XxlJobLogMapper.updateTriggerInfo() 设置 executor_address。
+  - **alarm_status 字段限制：** XxlJobLog.save() 不插入 alarm_status，需使用 updateAlarmStatus() 设置。测试 findFailJobLogIds 时，已告警的日志 (alarm_status!=0) 不应被返回。
+
+---
+
+## 2026-02-06 - US-013 ✅
+- What was implemented:
+  - 创建 XxlJobLockMapperIT.java 继承 MapperITBase
+  - 实现 3 个测试方法：scheduleLock 基本调用、并发锁超时、多次顺序获取
+  - 使用 TransactionTemplate 手动管理事务（避免依赖 @Transactional 回滚）
+  - 使用 ExecutorService + CountDownLatch 协调线程执行
+  - 线程 A 获取锁并持有，线程 B 设置 innodb_lock_wait_timeout=1 后尝试获取锁
+  - 验证线程 B 抛出 lock wait timeout 异常
+  - 测试结果：Tests run: 3, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobLockMapperIT.java (new)
+- **Learnings for future iterations:**
+  - **SELECT ... FOR UPDATE 在 @Transactional 中正常工作：** pessimistic locking 在 Spring @Transactional 事务中按预期工作，会阻塞其他事务获取同一行锁。
+  - **并发测试事务管理：** 使用 TransactionTemplate 手动管理事务，不依赖 @Transactional 回滚。每个线程需要自己的事务上下文。
+  - **innodb_lock_wait_timeout 设置：** `SET SESSION innodb_lock_wait_timeout=1` 是 session 级别设置，只影响当前会话。测试时需在获取锁之前设置。
+  - **CountDownLatch 协调线程：** 使用两个 CountDownLatch 协调线程执行顺序：threadAStarted 通知线程 B 可以开始，threadBFinished 等待线程 B 完成。
+  - **Exception 类型限制：** AtomicReference<Exception> 不能存储 AssertionError，因为 AssertionError 不是 Exception 的子类。需使用 RuntimeException 包装。
+
+---
