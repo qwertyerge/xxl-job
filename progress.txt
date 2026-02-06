@@ -93,3 +93,20 @@
   - **TestContainers 在 macOS 上与 Docker Desktop 配合良好**，之前遇到的 Docker 连接问题实际上是 SQL 脚本解析错误导致的。
 
 ---
+
+## 2026-02-06 - US-005 ✅
+- What was implemented:
+  - 创建 XxlJobUserMapperIT.java 继承 MapperITBase
+  - 实现 8 个测试方法覆盖所有 Mapper 操作：save, loadById, loadByUserName, update, delete, updateToken, pageList, pageListCount
+  - 使用 AssertJ 断言验证测试结果
+  - 测试 update 方法的条件密码更新逻辑：<if test="password != null and password != ''">
+  - 测试 pageList 支持按 username 模糊搜索和 role 精确过滤
+  - 测试结果：Tests run: 8, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobUserMapperIT.java (new)
+- **Learnings for future iterations:**
+  - **MyBatis <if> 条件语句测试：** update 方法的 `<if test="password != null and password != ''">` 条件逻辑需要在测试中验证两种场景：password 有值时更新、password 为 null 或空字符串时不更新。
+  - **pageList 多参数过滤：** XxlJobUserMapper.pageList 支持 username（模糊搜索）和 role（精确匹配）两个独立过滤参数，测试时需验证：单独过滤 username、单独过滤 role、同时过滤两个参数。
+  - **种子数据影响：** 初始 SQL 脚本包含 admin 用户 (id=1, username=admin, role=1)，测试需确保不与种子数据冲突（使用不同的 username）。
+
+---

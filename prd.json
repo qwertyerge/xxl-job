@@ -90,8 +90,8 @@
         "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobUserMapperIT 通过"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "种子数据有 1 个 admin 用户 (id=1, username=admin, role=1)。"
+      "passes": true,
+      "notes": "已实现并通过所有测试。关键测试：update 方法的 <if test=\"password != null and password != ''\"> 条件逻辑、updateToken 只修改 token 字段、pageList 支持按 username 和 role 过滤。"
     },
     {
       "id": "US-006",
