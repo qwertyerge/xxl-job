@@ -1,0 +1,21 @@
+## Codebase Patterns
+- 编译器配置：Spring Boot 4.x BOM 会覆盖 maven.compiler.source/target 属性，需要在 maven-compiler-plugin 配置中直接硬编码 Java 版本（如 `<source>17</source>`）
+- 根 pom.xml 的 release profile 默认激活（activeByDefault=true），其中的编译器配置也需要同步更新
+
+---
+
+## 2026-02-06 - US-001
+- What was implemented:
+  - 在根 pom.xml 的 dependencyManagement 添加 testcontainers-bom:1.20.4
+  - 在 xxl-job-admin/pom.xml 添加 testcontainers:junit-jupiter (scope=test)
+  - 在 xxl-job-admin/pom.xml 添加 testcontainers:mysql (scope=test)
+  - 在 xxl-job-admin/pom.xml 添加 mybatis-spring-boot-starter-test:4.0.1 (scope=test)
+  - 修复编译器配置以确保使用 Java 17
+- Files changed:
+  - pom.xml
+  - xxl-job-admin/pom.xml
+- **Learnings for future iterations:**
+  - Spring Boot 4.x 的 BOM 会覆盖 maven.compiler.source/target 属性为 1.8，必须在 maven-compiler-plugin 中直接硬编码版本号
+  - 根 pom.xml 有两处编译器配置：build/plugins 和 profiles/release/build/plugins，两处都需要更新
+  - testcontainers-bom 应放在 spring-boot-dependencies 之后
+---
