@@ -22,7 +22,7 @@ public final class TestFixtures {
     public static XxlJobGroup createJobGroup() {
         XxlJobGroup group = new XxlJobGroup();
         group.setAppname("test-app");
-        group.setTitle("Test Executor");
+        group.setTitle("TestExec");  // varchar(12) max
         group.setAddressType(0);
         group.setUpdateTime(new Date());
         return group;

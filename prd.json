@@ -65,11 +65,12 @@
         "测试 findByAddressType() 只返回匹配的 addressType",
         "测试 pageList/pageListCount 一致性，验证 appname 模糊搜索",
         "所有断言使用 AssertJ",
-        "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobGroupMapperIT 通过"
+        "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobGroupMapperIT 通过",
+        "引入org.testcontainers:testcontainers-junit-jupiter依赖, 而不是org.testcontainers:junit-jupiter"
       ],
       "priority": 4,
       "passes": false,
-      "notes": "种子数据有 2 个 group (id=1,2)，findAll/pageList 断言需考虑。"
+      "notes": "代码已实现但测试未通过：TestContainers Docker 环境检测失败。待解决 Docker socket 连接问题或考虑使用 H2 内存数据库替代方案。种子数据有 2 个 group (id=1,2)，findAll/pageList 断言需考虑。"
     },
     {
       "id": "US-005",

@@ -1,11 +1,4 @@
-#
-# XXL-JOB
-# Copyright (c) 2015-present, xuxueli.
-
-
 SET NAMES utf8mb4;
-
-## —————————————————————— job group and registry ——————————————————
 
 CREATE TABLE `xxl_job_group`
 (
@@ -30,8 +23,6 @@ CREATE TABLE `xxl_job_registry`
     UNIQUE KEY `i_g_k_v` (`registry_group`, `registry_key`, `registry_value`) USING BTREE
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4;
-
-## —————————————————————— job info ——————————————————
 
 CREATE TABLE `xxl_job_info`
 (
@@ -76,8 +67,6 @@ CREATE TABLE `xxl_job_logglue`
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4;
 
-## —————————————————————— job log and report ——————————————————
-
 CREATE TABLE `xxl_job_log`
 (
     `id`                        bigint(20) NOT NULL AUTO_INCREMENT,
@@ -116,16 +105,12 @@ CREATE TABLE `xxl_job_log_report`
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4;
 
-## —————————————————————— lock ——————————————————
-
 CREATE TABLE `xxl_job_lock`
 (
     `lock_name` varchar(50) NOT NULL COMMENT '锁名称',
     PRIMARY KEY (`lock_name`)
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4;
-
-## —————————————————————— user ——————————————————
 
 CREATE TABLE `xxl_job_user`
 (
@@ -139,9 +124,6 @@ CREATE TABLE `xxl_job_user`
     UNIQUE KEY `i_username` (`username`) USING BTREE
 ) ENGINE = InnoDB
   DEFAULT CHARSET = utf8mb4;
-
-
-## —————————————————————— for default data ——————————————————
 
 INSERT INTO `xxl_job_group`(`id`, `app_name`, `title`, `address_type`, `address_list`, `update_time`)
     VALUES (1, 'xxl-job-executor-sample', '通用执行器Sample', 0, NULL, now()),
@@ -178,4 +160,3 @@ VALUES (1, 'admin', '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923ad
 
 INSERT INTO `xxl_job_lock` (`lock_name`)
 VALUES ('schedule_lock');
-

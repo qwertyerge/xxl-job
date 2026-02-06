@@ -7,6 +7,14 @@
 - MapperITBase 使用 @MybatisTest + @AutoConfigureTestDatabase(replace=NONE) + @Transactional
 - @DynamicPropertySource 需配置 mybatis.mapper-locations 和 hikari.maximum-pool-size=5
 - TestFixtures 提供 6 个工厂方法：createJobGroup、createJobInfo、createJobLog、createLogGlue、createLogReport、createUser
+- Spring Boot 4.x 迁移注意事项：
+  - `@AutoConfigureTestDatabase` 包路径从 `org.springframework.boot.test.autoconfigure.jdbc` 改为 `org.springframework.boot.jdbc.test.autoconfigure`
+  - `@MybatisTest` 会强制加载主应用类（XxlJobAdminApplication），可能导致日志配置问题
+  - logback-test.xml 需要在测试资源目录创建以覆盖主 logback.xml 配置
+- TestContainers 与 Spring Boot 4.x 集成问题：
+  - TestContainers 在 Spring 应用上下文加载期间尝试检测 Docker 环境
+  - MySQLContainerHolder 需使用延迟初始化（lazy initialization）避免在 Spring 条件评估期间启动容器
+  - Docker socket 连接问题：TestContainers 尝试通过 Unix socket 连接但可能收到空响应
 
 ---
 
@@ -24,6 +32,7 @@
   - Spring Boot 4.x 的 BOM 会覆盖 maven.compiler.source/target 属性为 1.8，必须在 maven-compiler-plugin 中直接硬编码版本号
   - 根 pom.xml 有两处编译器配置：build/plugins 和 profiles/release/build/plugins，两处都需要更新
   - testcontainers-bom 应放在 spring-boot-dependencies 之后
+
 ---
 
 ## 2026-02-06 - US-002
@@ -37,9 +46,10 @@
   - xxl-job-admin/src/test/java/com/xxl/job/admin/test/support/MySQLContainerHolder.java (new)
 - **Learnings for future iterations:**
   - TestContainers 的 withDatabaseName 会自动创建数据库，所以 SQL 脚本中不需要 CREATE database 和 use 语句
-  - withInitScript 路径相对于 classpath（test/resources），所以使用 "db/tables_xxl_job.sql"
+  - withInitScript 路径相对 classpath（test/resources），所以使用 "db/tables_xxl_job.sql"
   - 种子数据包含：2 个 group (id=1,2)、3 个 job (id=1,2,3)、1 个 user (admin, id=1)、1 个 lock (schedule_lock)
   - MySQLContainerHolder 暴露 getJdbcUrl/getUsername/getPassword 静态方法供 @DynamicPropertySource 使用
+
 ---
 
 ## 2026-02-06 - US-003
@@ -60,4 +70,37 @@
   - HikariCP maximum-pool-size 设为 5 避免 TestContainer 连接耗尽
   - 实体类 NOT NULL 字段清单：XxlJobGroup(appname,title), XxlJobInfo(jobGroup,jobDesc,scheduleType,misfireStrategy,glueType), XxlJobLog(jobGroup,jobId,triggerCode,handleCode), XxlJobLogGlue(jobId,glueRemark), XxlJobLogReport(triggerDay唯一键), XxlJobUser(username,password,role)
   - XxlJobRegistry 没有对应的 model setter 用于 updateTime，注册操作通过 Mapper 参数直接传入
+
+---
+
+## 2026-02-06 - US-004
+- What was implemented:
+  - 创建 XxlJobGroupMapperIT.java 继承 MapperITBase
+  - 实现 9 个测试方法覆盖所有 Mapper 操作：save, load, update, remove, findAll, findByAddressType, pageList, pageListCount
+  - 使用 AssertJ 断言验证测试结果
+  - 添加 Maven Surefire 配置传递 DOCKER_HOST 环境变量
+  - 创建 logback-test.xml 覆盖主 logback.xml 以避免文件输出问题
+  - 创建 MapperTestConfiguration.java（未使用）
+  - 修改 MySQLContainerHolder 使用延迟初始化（double-checked locking）避免在 Spring 条件评估期间启动容器
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobGroupMapperIT.java (new)
+  - xxl-job-admin/src/test/resources/logback-test.xml (new)
+  - xxl-job-admin/src/test/resources/application-test.properties (new)
+  - xxl-job-admin/pom.xml (添加 testcontainers:testcontainers:1.20.4 和 surefire 配置)
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/test/support/MySQLContainerHolder.java (修改为延迟初始化)
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/test/support/MapperTestConfiguration.java (new,未使用)
+- **Learnings for future iterations:**
+  - Spring Boot 4.x 中 `@AutoConfigureTestDatabase` 包路径从 `org.springframework.boot.test.autoconfigure.jdbc` 改为 `org.springframework.boot.jdbc.test.autoconfigure`
+  - `@MybatisTest` 会检测并强制加载主应用类（XxlJobAdminApplication），即使使用 `classes` 参数指定测试配置类
+  - TestContainers 在 Spring 应用上下文加载期间（特别是 `DataSourceAutoConfiguration` 条件评估时）尝试检测 Docker 环境
+  - 延迟初始化 MySQLContainerHolder 可以避免在类加载时启动容器，但 `@DynamicPropertySource` 方法执行时仍会触发初始化
+  - Docker 环境检测失败会被 TestContainers 缓存，需要清除缓存（mvn clean）才能重试
+  - TestContainers 1.20.4 与 Docker Desktop 在 macOS 上的 socket 连接可能存在兼容性问题
+  - `logback-test.xml` 放在 `src/test/resources/` 下会覆盖 `src/main/resources/logback.xml`
+  - Maven Surefire 插件可通过 `<environmentVariables>` 配置传递环境变量给测试
+- **待解决问题：**
+  - TestContainers Docker 环境检测失败，错误信息：`Could not find a valid Docker environment` 和 `Previous attempts to find a Docker environment failed. Will not retry`
+  - 可能需要在 CI/CD 环境中配置 DOCKER_HOST 环境变量或使用 TestContainers 配置文件
+  - 考虑降级 TestContainers 版本或使用替代的测试数据库方案（如 H2 内存数据库）
+
 ---
