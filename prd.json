@@ -165,8 +165,8 @@
         "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobInfoMapperIT 通过"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": "种子数据有 3 个 job (id=1,2,3)，findAllCount/pageList 断言需考虑。"
+      "passes": true,
+      "notes": "已实现并通过所有测试。关键测试：pageList 支持 jobDesc/executorHandler/author 多参数模糊搜索、triggerStatus 精确过滤、分页查询验证。种子数据有 3 个 job (id=1,2,3)，findAllCount 使用 before + N = after 模式验证。"
     },
     {
       "id": "US-010",

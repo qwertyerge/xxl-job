@@ -162,3 +162,20 @@
   - **findDead 测试注意事项：** findDead SQL 使用 `WHERE update_time < DATE_ADD(#{nowTime}, INTERVAL -#{timeout} SECOND)`。测试时需要确保构造的 updateTime 确实小于 `nowTime - timeout`，否则测试会失败。
 
 ---
+## 2026-02-06 - US-009 ✅
+- What was implemented:
+  - 创建 XxlJobInfoMapperIT.java 继承 MapperITBase
+  - 实现 10 个测试方法覆盖所有 Mapper 操作：save, loadById, update, delete, getJobsByGroup, findAllCount, pageList (多参数过滤)
+  - 使用 AssertJ 断言验证测试结果
+  - 测试 pageList 支持 jobDesc/executorHandler/author 多参数模糊搜索
+  - 测试 pageList 支持 triggerStatus 精确过滤（0=停止，1=运行）
+  - 测试 pageList 分页查询（offset, pagesize）
+  - 测试结果：Tests run: 10, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobInfoMapperIT.java (new)
+- **Learnings for future iterations:**
+  - **种子数据影响计数：** 初始 SQL 脚本包含 3 个 job (id=1,2,3)，findAllCount 测试使用 `before + N = after` 模式验证插入效果，避免断言绝对值。
+  - **pageList 多参数过滤：** XxlJobInfoMapper.pageList 支持 jobGroup（精确）、triggerStatus（精确）、jobDesc（模糊）、executorHandler（模糊）、author（模糊）五个独立过滤参数。测试时需验证：单独过滤、组合过滤。
+  - **triggerStatus 过滤逻辑：** XML 中使用 `<if test="triggerStatus gte 0">`，意味着 triggerStatus=-1 时不应用过滤条件。测试中触发过滤时传入 0 或 1，不触发过滤时传入 -1。
+
+---
