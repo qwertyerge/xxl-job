@@ -47,7 +47,7 @@
         "编译通过"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "mybatis.mapper-locations=classpath:/mapper/*Mapper.xml 需在 @DynamicPropertySource 中配置。HikariCP maximum-pool-size 设为 5 避免容器连接耗尽。"
     },
     {
