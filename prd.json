@@ -107,8 +107,8 @@
         "mvn test -pl xxl-job-admin -Dmaven.test.skip=false -Dtest=XxlJobLogGlueMapperIT 通过"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": "removeOld 的 SQL 使用子查询保留最新 N 条（按 update_time DESC），插入测试数据时需设置不同的 updateTime。"
+      "passes": true,
+      "notes": "已实现并通过所有测试。关键测试：removeOld 使用子查询保留最新 N 条（按 update_time DESC），测试时通过 Thread.sleep(10) 确保每条记录有不同的 update_time。"
     },
     {
       "id": "US-007",

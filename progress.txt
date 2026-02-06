@@ -110,3 +110,20 @@
   - **种子数据影响：** 初始 SQL 脚本包含 admin 用户 (id=1, username=admin, role=1)，测试需确保不与种子数据冲突（使用不同的 username）。
 
 ---
+
+## 2026-02-06 - US-006 ✅
+- What was implemented:
+  - 创建 XxlJobLogGlueMapperIT.java 继承 MapperITBase
+  - 实现 5 个测试方法覆盖所有 Mapper 操作：save, findByJobId, removeOld, deleteByJobId
+  - 使用 AssertJ 断言验证测试结果
+  - 测试 removeOld 使用子查询保留最新 N 条记录（按 update_time DESC）
+  - 测试 findByJobId 返回的列表按 id DESC 排序
+  - 测试结果：Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobLogGlueMapperIT.java (new)
+- **Learnings for future iterations:**
+  - **removeOld 子查询逻辑：** SQL 使用 `DELETE FROM xxl_job_logglue WHERE id NOT in(SELECT id FROM(SELECT id FROM xxl_job_logglue WHERE job_id = #{jobId} ORDER BY update_time desc LIMIT 0, #{limit}) t1) AND job_id = #{jobId}` 保留最新 N 条记录。测试时需确保每条记录有不同的 update_time，通过 `Thread.sleep(10)` 或手动设置时间戳实现。
+  - **orderBy 验证：** findByJobId 返回的列表应该按 id DESC 排序，测试时需验证 `list.get(0).getId() > list.get(1).getId()`。
+  - **Thread.sleep() 异常处理：** JUnit 5 测试方法中使用 `Thread.sleep()` 需要声明 `throws InterruptedException`。
+
+---
