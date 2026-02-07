@@ -22,6 +22,8 @@
   - 字符串拼接：CONCAT(CONCAT('%', #{xxx}), '%') → '%' || #{xxx} || '%'
   - 移除反引号包裹的列名
   - namespace 和 resultMap 保持不变
+  - IFNULL → COALESCE
+  - !(expr) → NOT (expr)
 
 ---
 
@@ -85,5 +87,24 @@
   - XxlJobInfoMapper 是字段最多的 Mapper（23 个字段），转换时需仔细核对每个字段
   - scheduleJobQuery 只有 LIMIT 没有 OFFSET，PostgreSQL 和 MySQL 语法一致，无需转换
   - MySQL 版本中注释掉的代码（如 selectKey、scheduleUpdateBatch）在 PostgreSQL 版本中直接省略即可
+
+---
+
+## 2026-02-07 - US-006
+- 创建了 mapper/postgres/XxlJobLogMapper.xml
+- 从 MySQL 版本转换了全部 SQL 语句（pageList、pageListCount、load、save、updateTriggerInfo、updateHandleInfo、delete、findLogReport、findClearLogIds、clearLog、findFailJobLogIds、updateAlarmStatus、findLostJobIds）
+- 转换分页语法：LIMIT #{offset}, #{pagesize} → LIMIT #{pagesize} OFFSET #{offset}
+- 转换 IFNULL → COALESCE（findLogReport 中的 3 处）
+- 转换 !(…) → NOT (…)（findFailJobLogIds 中）
+- 移除了所有反引号包裹的列名
+- 移除了注释掉的代码块（selectKey、triggerCountByDay、底部注释）
+- 移除了 findLostJobIds 末尾多余的分号
+- findClearLogIds 中 LIMIT 0, #{clearBeforeNum} → LIMIT #{clearBeforeNum}（offset 为 0 时可省略）
+- Files changed: xxl-job-admin/src/main/resources/mapper/postgres/XxlJobLogMapper.xml (新建)
+- **Learnings for future iterations:**
+  - PostgreSQL 不支持 IFNULL，需使用 COALESCE 替代
+  - PostgreSQL 不支持 ! 作为 NOT 运算符，需使用 NOT 关键字
+  - XxlJobLogMapper 是查询最复杂的 Mapper，包含子查询、LEFT JOIN、BETWEEN 等多种语法
+  - findClearLogIds 中的子查询嵌套（SELECT id FROM (SELECT ... LIMIT) t1）在 PostgreSQL 中同样有效
 
 ---
