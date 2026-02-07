@@ -7,7 +7,68 @@
   - **移除 CREATE database、use 和 commit; 语句**
 - MapperITBase 使用 @MybatisTest + @AutoConfigureTestDatabase(replace=NONE) + @Transactional
 - @DynamicPropertySource 需配置 mybatis.mapper-locations 和 hikari.maximum-pool-size=5
+- **Mapper XML 目录结构：** mapper/mysql/ 和 mapper/postgres/ 分别存放对应数据库的 Mapper XML
 - TestFixtures 提供 6 个工厂方法：createJobGroup、createJobInfo、createJobLog、createLogGlue、createLogReport、createUser
 - **测试数据长度限制：** XxlJobGroup.title 是 varchar(12)，测试数据必须 ≤12 个字符
+- **PostgreSQL DDL 转换规则：**
+  - int(11) → INTEGER/SERIAL, bigint(20) → BIGINT/BIGSERIAL, tinyint(4) → SMALLINT
+  - datetime → TIMESTAMP, mediumtext → TEXT
+  - AUTO_INCREMENT → SERIAL/BIGSERIAL
+  - 移除 ENGINE=InnoDB, DEFAULT CHARSET, USING BTREE
+  - MySQL 内联索引 → PostgreSQL 独立 CREATE INDEX 语句
+  - 显式 ID 插入后需 setval 同步序列
+- **Mapper XML MySQL→PostgreSQL 转换规则：**
+  - 分页：LIMIT #{offset}, #{pagesize} → LIMIT #{pagesize} OFFSET #{offset}
+  - 字符串拼接：CONCAT(CONCAT('%', #{xxx}), '%') → '%' || #{xxx} || '%'
+  - 移除反引号包裹的列名
+  - namespace 和 resultMap 保持不变
+
+---
+
+## 2026-02-07 - US-001
+- 已在之前的迭代中完成
+- 添加了 org.postgresql:postgresql 和 org.testcontainers:postgresql 依赖
+- PRD 状态已更新为 passes: true
+
+---
+
+## 2026-02-07 - US-002
+- 创建了 doc/db/tables_xxl_job_postgres.sql
+- 从 MySQL DDL 转换了全部 8 张表的定义
+- 转换了数据类型、自增主键、索引语法
+- 转换了默认数据插入语句，添加了 setval 同步序列
+- Files changed: doc/db/tables_xxl_job_postgres.sql
+- **Learnings for future iterations:**
+  - PostgreSQL 使用 SERIAL/BIGSERIAL 替代 AUTO_INCREMENT
+  - 显式插入 ID 后需要 SELECT setval() 同步序列，否则后续自增会冲突
+  - PostgreSQL 索引不能内联在 CREATE TABLE 中（除 PRIMARY KEY 和 UNIQUE 约束外），需要独立的 CREATE INDEX 语句
+  - MySQL 的反引号在 PostgreSQL 中不需要
+
+---
+
+## 2026-02-07 - US-003
+- 创建了 mapper/mysql/ 子目录
+- 使用 git mv 将 8 个 Mapper XML 文件移动到 mapper/mysql/ 目录
+- 更新 application.properties 中 mybatis.mapper-locations 为 classpath:/mapper/mysql/*Mapper.xml
+- mvn compile -pl xxl-job-admin -am 编译通过
+- Files changed: xxl-job-admin/src/main/resources/application.properties, 8 个 Mapper XML 文件（重命名）
+- **Learnings for future iterations:**
+  - Mapper XML 文件现在按数据库类型分目录存放：mapper/mysql/、mapper/postgres/
+  - mybatis.mapper-locations 需要指向具体的数据库子目录
+  - git mv 可以保留文件历史记录
+
+---
+
+## 2026-02-07 - US-004
+- 创建了 mapper/postgres/XxlJobGroupMapper.xml
+- 从 MySQL 版本转换：分页语法 LIMIT #{offset}, #{pagesize} → LIMIT #{pagesize} OFFSET #{offset}
+- 转换字符串拼接：CONCAT(CONCAT('%', #{xxx}), '%') → '%' || #{xxx} || '%'
+- 移除了 MySQL 反引号
+- 保持 namespace 和 resultMap 与 MySQL 版本一致
+- Files changed: xxl-job-admin/src/main/resources/mapper/postgres/XxlJobGroupMapper.xml (新建)
+- **Learnings for future iterations:**
+  - PostgreSQL 分页语法是 LIMIT count OFFSET start（MySQL 是 LIMIT start, count）
+  - PostgreSQL 字符串拼接使用 || 运算符，不需要 CONCAT 函数
+  - PostgreSQL 不使用反引号包裹列名，直接使用列名即可
 
 ---
