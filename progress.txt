@@ -27,6 +27,7 @@
   - ON DUPLICATE KEY UPDATE → ON CONFLICT (column) DO UPDATE SET（需指定 UNIQUE 约束列）
   - DATE_ADD(date, INTERVAL -N SECOND) → date - N * INTERVAL '1 SECOND'
 - **数据库类型切换：** xxl.job.db.type 配置项控制数据库类型，mybatis.mapper-locations 使用 ${xxl.job.db.type:mysql} 属性占位符动态解析
+- **PostgreSQL Map key 大小写：** MyBatis resultType="java.util.Map" 查询中，PostgreSQL 返回的列别名默认是小写（如 triggerdaycount），而 MySQL 保留原始大小写（如 triggerDayCount）
 - **MyBatisConfig 配置类：** 位于 scheduler/config 包，负责日志输出和 db.type 验证
 - **maven.test.skip：** 父 POM 设置了 maven.test.skip=true，编译/运行测试需要 -Dmaven.test.skip=false
 - **PostgreSQL 测试基础设施：** PostgreSQLContainerHolder（Singleton 容器）+ PostgresMapperITBase（@MybatisTest + @Transactional + @DynamicPropertySource）
@@ -293,5 +294,28 @@
   - scheduleUpdate 只更新 trigger_status=1 的记录，测试需要先设置 triggerStatus=1 才能验证更新
   - 测试 DDL 中已有 1 条 xxl_job_info 种子数据（id=1, job_group=1），测试时需考虑
   - 运行单个测试类时需要 -Dsurefire.failIfNoSpecifiedTests=false 避免其他模块报错
+
+---
+
+## 2026-02-08 - US-017
+- 创建了 XxlJobLogMapperPostgresIT.java 继承 PostgresMapperITBase
+- 测试覆盖 22 个测试方法：
+  - CRUD：save_shouldInsertAndReturnGeneratedId、load_shouldReturnSavedLog、updateTriggerInfo_shouldUpdateFields、updateHandleInfo_shouldUpdateFields、delete_shouldRemoveLogsByJobId
+  - 分页：pageList_shouldReturnPagedResults、pageListCount_shouldReturnTotalCount、pageList_shouldFilterByJobGroup、pageList_shouldFilterByJobId、pageList_shouldFilterByTriggerTimeRange、pageList_shouldFilterByLogStatus_success、pageList_shouldFilterByLogStatus_fail、pageList_shouldFilterByLogStatus_running
+  - 报表：findLogReport_shouldReturnAggregatedCounts
+  - 清理：findClearLogIds_shouldReturnLogIds、findClearLogIds_shouldFilterByClearBeforeTime、findClearLogIds_shouldRespectClearBeforeNum、clearLog_shouldDeleteByIds
+  - 告警：findFailJobLogIds_shouldReturnFailedLogs、updateAlarmStatus_shouldUpdateWhenOldStatusMatches、updateAlarmStatus_shouldNotUpdateWhenOldStatusMismatch
+  - 丢失任务：findLostJobIds_shouldReturnLogsWithNoRegistry
+- 所有 22 个测试通过，mvn compile 通过
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobLogMapperPostgresIT.java (新建)
+- **Learnings for future iterations:**
+  - XxlJobLogMapper 有 13 个方法，是查询最复杂的 Mapper，包含子查询、LEFT JOIN、BETWEEN、COALESCE 等多种语法
+  - PostgreSQL 的 findLogReport 返回的 Map key 是小写的（triggerdaycount 而非 triggerDayCount），因为 PostgreSQL 默认将未加引号的标识符转为小写
+  - pageList 的 logStatus 参数：0=全部，1=成功(handle_code=200)，2=失败(trigger_code NOT IN (0,200) OR handle_code NOT IN (0,200))，3=运行中(trigger_code=200 AND handle_code=0)
+  - findClearLogIds 的 clearBeforeNum 参数表示保留最新的 N 条记录，其余返回待清理
+  - findLostJobIds 通过 LEFT JOIN xxl_job_registry 检测执行器是否在线，registry_value 为 NULL 表示执行器已离线
+  - xxl_job_log 表没有种子数据，测试不需要考虑已有数据的影响
+  - delete 方法按 job_id 删除（不是按主键 id），一次可删除多条记录
 
 ---
