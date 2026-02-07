@@ -26,6 +26,8 @@
   - !(expr) → NOT (expr)
   - ON DUPLICATE KEY UPDATE → ON CONFLICT (column) DO UPDATE SET（需指定 UNIQUE 约束列）
   - DATE_ADD(date, INTERVAL -N SECOND) → date - N * INTERVAL '1 SECOND'
+- **数据库类型切换：** xxl.job.db.type 配置项控制数据库类型，mybatis.mapper-locations 使用 ${xxl.job.db.type:mysql} 属性占位符动态解析
+- **MyBatisConfig 配置类：** 位于 scheduler/config 包，负责日志输出和 db.type 验证
 
 ---
 
@@ -185,5 +187,20 @@
   - XxlJobUserMapper 是最后一个需要转换的 Mapper XML，至此全部 8 个 Mapper 的 PostgreSQL 版本已完成
   - 该 Mapper 较简单，主要转换点是分页语法和字符串拼接，其余 SQL 都是标准 SQL
   - useGeneratedKeys="true" keyProperty="id" 在 PostgreSQL 中同样有效
+
+---
+
+## 2026-02-07 - US-012
+- 在 application.properties 中添加了 xxl.job.db.type=mysql 配置项（默认值）
+- 使用 Spring Boot 属性占位符实现动态 mapper-locations：mybatis.mapper-locations=classpath:/mapper/${xxl.job.db.type:mysql}/*Mapper.xml
+- 创建了 MyBatisConfig 配置类（com.xxl.job.admin.scheduler.config.MyBatisConfig）
+- MyBatisConfig 在 @PostConstruct 中验证 db.type 值并输出日志
+- 支持 mysql 和 postgres 两种数据库类型，无效值默认回退到 mysql
+- mvn compile 和 mvn test 均通过
+- Files changed: xxl-job-admin/src/main/resources/application.properties, xxl-job-admin/src/main/java/com/xxl/job/admin/scheduler/config/MyBatisConfig.java (新建)
+- **Learnings for future iterations:**
+  - Spring Boot 属性占位符 ${property:default} 可以直接在 mybatis.mapper-locations 中使用，无需自定义 SqlSessionFactory
+  - 使用属性占位符比 BeanPostProcessor 或 EnvironmentPostProcessor 更简洁可靠
+  - MyBatisConfig 配置类放在 scheduler/config 包下，与 XxlJobAdminBootstrap 同级
 
 ---
