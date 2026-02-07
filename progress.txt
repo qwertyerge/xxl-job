@@ -25,6 +25,7 @@
   - IFNULL → COALESCE
   - !(expr) → NOT (expr)
   - ON DUPLICATE KEY UPDATE → ON CONFLICT (column) DO UPDATE SET（需指定 UNIQUE 约束列）
+  - DATE_ADD(date, INTERVAL -N SECOND) → date - N * INTERVAL '1 SECOND'
 
 ---
 
@@ -151,5 +152,22 @@
   - ON CONFLICT 需要指定冲突的列（通常是 UNIQUE 约束列），不能省略
   - xxl_job_log_report 表的 trigger_day 列有 UNIQUE 索引，因此 ON CONFLICT (trigger_day) 是正确的冲突目标
   - queryLogReport 使用 BETWEEN 和 ORDER BY，queryLogReportTotal 使用 SUM 聚合，这些语法 PostgreSQL 完全兼容
+
+---
+
+## 2026-02-07 - US-010
+- 创建了 mapper/postgres/XxlJobRegistryMapper.xml
+- 从 MySQL 版本转换了全部 SQL 语句（findDead、removeDead、findAll、registrySaveOrUpdate、registryDelete、removeByRegistryGroupAndKey）
+- 转换日期计算语法：DATE_ADD(#{nowTime}, INTERVAL -#{timeout} SECOND) → #{nowTime} - #{timeout} * INTERVAL '1 SECOND'（findDead 和 findAll 中各 1 处）
+- 转换 ON DUPLICATE KEY UPDATE → ON CONFLICT (registry_group, registry_key, registry_value) DO UPDATE SET（利用表上的 UNIQUE 约束）
+- 移除了反引号包裹的列名（registrySaveOrUpdate 中的 registry_group、registry_key、registry_value、update_time）
+- 移除了注释掉的 registryUpdate 和 registrySave 代码块
+- 保持 namespace 和 resultMap 与 MySQL 版本一致
+- Files changed: xxl-job-admin/src/main/resources/mapper/postgres/XxlJobRegistryMapper.xml (新建)
+- **Learnings for future iterations:**
+  - MySQL 的 DATE_ADD(date, INTERVAL -N SECOND) 在 PostgreSQL 中转换为 date - N * INTERVAL '1 SECOND'
+  - ON CONFLICT 需要指定冲突列，xxl_job_registry 表的 UNIQUE 约束是 (registry_group, registry_key, registry_value)
+  - removeDead 和 registryDelete 使用标准 SQL 语法（DELETE、foreach），PostgreSQL 完全兼容无需转换
+  - findDead 和 findAll 的 CDATA 包裹的比较运算符（< 和 >）在 PostgreSQL 中同样有效
 
 ---
