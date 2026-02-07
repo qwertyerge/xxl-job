@@ -24,6 +24,7 @@
   - namespace 和 resultMap 保持不变
   - IFNULL → COALESCE
   - !(expr) → NOT (expr)
+  - ON DUPLICATE KEY UPDATE → ON CONFLICT (column) DO UPDATE SET（需指定 UNIQUE 约束列）
 
 ---
 
@@ -134,5 +135,21 @@
   - XxlJobLogGlueMapper 较简单，只有 4 个 SQL 语句
   - removeOld 使用子查询嵌套（SELECT id FROM (SELECT ... LIMIT) t1）在 PostgreSQL 中同样有效
   - 该 Mapper 没有使用 CONCAT、日期函数等需要特殊转换的 MySQL 语法，主要转换点是反引号和 LIMIT 语法
+
+---
+
+## 2026-02-07 - US-009
+- 创建了 mapper/postgres/XxlJobLogReportMapper.xml
+- 从 MySQL 版本转换了全部 SQL 语句（saveOrUpdate、queryLogReport、queryLogReportTotal）
+- 转换 ON DUPLICATE KEY UPDATE → ON CONFLICT (trigger_day) DO UPDATE SET（利用 trigger_day 上的 UNIQUE 索引）
+- 移除了反引号包裹的列名
+- 移除了注释掉的 save 和 update 代码块
+- queryLogReport 和 queryLogReportTotal 语法 PostgreSQL 兼容，无需修改
+- Files changed: xxl-job-admin/src/main/resources/mapper/postgres/XxlJobLogReportMapper.xml (新建)
+- **Learnings for future iterations:**
+  - MySQL 的 ON DUPLICATE KEY UPDATE 在 PostgreSQL 中需转换为 ON CONFLICT (column) DO UPDATE SET
+  - ON CONFLICT 需要指定冲突的列（通常是 UNIQUE 约束列），不能省略
+  - xxl_job_log_report 表的 trigger_day 列有 UNIQUE 索引，因此 ON CONFLICT (trigger_day) 是正确的冲突目标
+  - queryLogReport 使用 BETWEEN 和 ORDER BY，queryLogReportTotal 使用 SUM 聚合，这些语法 PostgreSQL 完全兼容
 
 ---
