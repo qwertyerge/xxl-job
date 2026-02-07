@@ -33,6 +33,7 @@
 - **Testcontainers + Docker 29.x 兼容性：** Testcontainers 1.20.4 与 Docker 29.x 不兼容（API 版本问题），需要在 src/test/resources/docker-java.properties 中设置 api.version=1.44
 - **Spring Boot 4.x BOM 覆盖 Testcontainers 核心版本：** Spring Boot 4.0.1 BOM 将 testcontainers 核心升级到 2.0.3，需要在父 POM dependencyManagement 中显式固定 org.testcontainers:testcontainers 版本
 - **测试 Logback 配置：** 需要 src/test/resources/logback-test.xml 覆盖生产 logback.xml，避免写入 /data/applogs 目录
+- **运行单个测试类：** mvn test -Dtest="ClassName" -Dsurefire.failIfNoSpecifiedTests=false 避免其他模块报错
 
 ---
 
@@ -272,5 +273,25 @@
   - 测试需要 logback-test.xml 覆盖生产 logback.xml，否则会因 /data/applogs 目录不存在而失败
   - XxlJobGroup.title 是 varchar(12)，测试数据必须 ≤12 个字符
   - 测试 DDL 中已有 2 条 xxl_job_group 种子数据（id=1,2），测试时需考虑
+
+---
+
+## 2026-02-08 - US-016
+- 创建了 XxlJobInfoMapperPostgresIT.java 继承 PostgresMapperITBase
+- 测试覆盖 16 个测试方法：
+  - CRUD：save_shouldInsertAndReturnGeneratedId、loadById_shouldReturnSavedJob、update_shouldModifyExistingJob、delete_shouldRemoveJob
+  - 查询：getJobsByGroup_shouldReturnJobsForGroup、findAllCount_shouldReturnTotalCount
+  - 分页：pageList_shouldReturnPagedResults、pageListCount_shouldReturnTotalCount、pageList_shouldFilterByJobGroup、pageList_shouldFilterByJobDesc、pageList_shouldFilterByExecutorHandler、pageList_shouldFilterByAuthor、pageList_shouldFilterByTriggerStatus
+  - 调度：scheduleJobQuery_shouldReturnTriggeredJobs、scheduleUpdate_shouldUpdateTriggerTimes、scheduleUpdate_shouldNotUpdateWhenStatusIsNotOne
+- 所有 16 个测试通过，mvn compile 通过
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobInfoMapperPostgresIT.java (新建)
+- **Learnings for future iterations:**
+  - XxlJobInfoMapper 有 10 个方法，是字段最多的 Mapper（23 个字段），测试需要创建完整的 XxlJobInfo 对象
+  - pageList 的 triggerStatus 参数使用 -1 表示不过滤（XML 中 `triggerStatus gte 0` 条件）
+  - pageList 的 jobGroup 参数使用 0 表示不过滤（XML 中 `jobGroup gt 0` 条件）
+  - scheduleUpdate 只更新 trigger_status=1 的记录，测试需要先设置 triggerStatus=1 才能验证更新
+  - 测试 DDL 中已有 1 条 xxl_job_info 种子数据（id=1, job_group=1），测试时需考虑
+  - 运行单个测试类时需要 -Dsurefire.failIfNoSpecifiedTests=false 避免其他模块报错
 
 ---
