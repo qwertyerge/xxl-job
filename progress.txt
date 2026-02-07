@@ -171,3 +171,19 @@
   - findDead 和 findAll 的 CDATA 包裹的比较运算符（< 和 >）在 PostgreSQL 中同样有效
 
 ---
+
+## 2026-02-07 - US-011
+- 创建了 mapper/postgres/XxlJobUserMapper.xml
+- 从 MySQL 版本转换了全部 SQL 语句（pageList、pageListCount、loadByUserName、loadById、save、update、delete、updateToken）
+- 转换分页语法：LIMIT #{offset}, #{pagesize} → LIMIT #{pagesize} OFFSET #{offset}
+- 转换字符串拼接：CONCAT(CONCAT('%', #{username}), '%') → '%' || #{username} || '%'（pageList 和 pageListCount 中各 1 处）
+- 移除了 INSERT 语句末尾的分号（PostgreSQL MyBatis 最佳实践）
+- 保持 namespace 和 resultMap 与 MySQL 版本一致
+- loadByUserName、loadById、update、delete、updateToken 使用标准 SQL，无需转换
+- Files changed: xxl-job-admin/src/main/resources/mapper/postgres/XxlJobUserMapper.xml (新建)
+- **Learnings for future iterations:**
+  - XxlJobUserMapper 是最后一个需要转换的 Mapper XML，至此全部 8 个 Mapper 的 PostgreSQL 版本已完成
+  - 该 Mapper 较简单，主要转换点是分页语法和字符串拼接，其余 SQL 都是标准 SQL
+  - useGeneratedKeys="true" keyProperty="id" 在 PostgreSQL 中同样有效
+
+---
