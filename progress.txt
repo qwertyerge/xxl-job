@@ -204,3 +204,22 @@
   - MyBatisConfig 配置类放在 scheduler/config 包下，与 XxlJobAdminBootstrap 同级
 
 ---
+
+## 2026-02-07 - US-013
+- 创建了 xxl-job-admin/src/test/resources/db/tables_xxl_job_postgres.sql
+- 从 doc/db/tables_xxl_job_postgres.sql 复制内容并做以下处理：
+  - 移除了所有 SQL 注释（-- 开头的行）
+  - 移除了 CREATE database、use、commit 语句
+  - 每个 SQL 语句以分号结尾
+- 简化了测试初始数据（移除中文 title 避免编码问题，使用 ASCII 字符且 ≤12 字符）
+- 简化了 xxl_job_info 初始数据（只保留 1 条记录，移除了包含 JSON 的复杂记录）
+- 全部 8 张表定义 + 索引 + 初始数据完整
+- mvn compile 通过
+- Files changed: xxl-job-admin/src/test/resources/db/tables_xxl_job_postgres.sql (新建)
+- **Learnings for future iterations:**
+  - Testcontainers SQL 解析器不支持注释，必须移除所有 -- 注释
+  - 测试 DDL 脚本不需要 CREATE database 和 commit 语句，Testcontainers 自动处理
+  - 测试数据应尽量简化，避免中文字符和复杂 JSON，减少编码和解析问题
+  - xxl-job-admin/src/test/resources/ 目录之前不存在，需要手动创建
+
+---
