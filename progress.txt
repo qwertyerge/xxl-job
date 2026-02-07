@@ -30,6 +30,9 @@
 - **MyBatisConfig 配置类：** 位于 scheduler/config 包，负责日志输出和 db.type 验证
 - **maven.test.skip：** 父 POM 设置了 maven.test.skip=true，编译/运行测试需要 -Dmaven.test.skip=false
 - **PostgreSQL 测试基础设施：** PostgreSQLContainerHolder（Singleton 容器）+ PostgresMapperITBase（@MybatisTest + @Transactional + @DynamicPropertySource）
+- **Testcontainers + Docker 29.x 兼容性：** Testcontainers 1.20.4 与 Docker 29.x 不兼容（API 版本问题），需要在 src/test/resources/docker-java.properties 中设置 api.version=1.44
+- **Spring Boot 4.x BOM 覆盖 Testcontainers 核心版本：** Spring Boot 4.0.1 BOM 将 testcontainers 核心升级到 2.0.3，需要在父 POM dependencyManagement 中显式固定 org.testcontainers:testcontainers 版本
+- **测试 Logback 配置：** 需要 src/test/resources/logback-test.xml 覆盖生产 logback.xml，避免写入 /data/applogs 目录
 
 ---
 
@@ -244,5 +247,30 @@
   - 父 POM 设置了 maven.test.skip=true，编译测试代码需要 -Dmaven.test.skip=false
   - @MybatisTest 在 Spring Boot 4.x 中不再自动引入 @AutoConfigureTestDatabase
   - testcontainers 包放在 com.xxl.job.admin.testcontainers 下，与 mapper 测试包分离
+
+---
+
+## 2026-02-07 - US-015
+- 创建了 XxlJobGroupMapperPostgresIT.java 继承 PostgresMapperITBase
+- 测试覆盖 10 个测试方法：
+  - CRUD：save_shouldInsertAndReturnGeneratedId、load_shouldReturnSavedGroup、update_shouldModifyExistingGroup、remove_shouldDeleteGroup
+  - 查询：findAll_shouldReturnAllGroups、findByAddressType_shouldFilterCorrectly
+  - 分页：pageList_shouldReturnPagedResults、pageListCount_shouldReturnTotalCount、pageList_shouldFilterByAppname、pageList_shouldFilterByTitle
+- 修复了 Testcontainers + Docker 29.x 兼容性问题：
+  - 在父 POM 中显式固定 org.testcontainers:testcontainers 版本为 ${testcontainers.version}，防止 Spring Boot BOM 覆盖到 2.0.3
+  - 创建 src/test/resources/docker-java.properties 设置 api.version=1.44
+  - 创建 src/test/resources/logback-test.xml 覆盖生产 logback 配置
+- 所有 10 个测试通过，mvn compile 通过
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobGroupMapperPostgresIT.java (新建)
+  - xxl-job-admin/src/test/resources/docker-java.properties (新建)
+  - xxl-job-admin/src/test/resources/logback-test.xml (新建)
+  - pom.xml (添加 testcontainers 核心版本固定)
+- **Learnings for future iterations:**
+  - Testcontainers 1.20.4 与 Docker 29.x 不兼容，需要 docker-java.properties 设置 api.version=1.44
+  - Spring Boot 4.0.1 BOM 会将 testcontainers 核心版本覆盖为 2.0.3，导致与 1.20.4 模块版本不匹配
+  - 测试需要 logback-test.xml 覆盖生产 logback.xml，否则会因 /data/applogs 目录不存在而失败
+  - XxlJobGroup.title 是 varchar(12)，测试数据必须 ≤12 个字符
+  - 测试 DDL 中已有 2 条 xxl_job_group 种子数据（id=1,2），测试时需考虑
 
 ---

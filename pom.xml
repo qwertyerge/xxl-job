@@ -84,6 +84,12 @@
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>
+			<!-- pin testcontainers core to match BOM (Spring Boot 4.x overrides to 2.x) -->
+			<dependency>
+				<groupId>org.testcontainers</groupId>
+				<artifactId>testcontainers</artifactId>
+				<version>${testcontainers.version}</version>
+			</dependency>
 
 			<!-- slf4j -->
 			<dependency>
