@@ -108,3 +108,31 @@
   - findClearLogIds 中的子查询嵌套（SELECT id FROM (SELECT ... LIMIT) t1）在 PostgreSQL 中同样有效
 
 ---
+
+## 2026-02-07 - US-007
+- 创建了 mapper/postgres/XxlJobLockMapper.xml
+- SELECT ... FOR UPDATE 语法 PostgreSQL 完全支持，无需转换
+- namespace 保持与 MySQL 版本一致：com.xxl.job.admin.mapper.XxlJobLockMapper
+- Files changed: xxl-job-admin/src/main/resources/mapper/postgres/XxlJobLockMapper.xml (新建)
+- **Learnings for future iterations:**
+  - XxlJobLockMapper 是最简单的 Mapper，只有一个 scheduleLock 查询
+  - PostgreSQL 完全支持 SELECT ... FOR UPDATE 语法，无需任何转换
+  - 该 Mapper 没有使用反引号、CONCAT、LIMIT 等需要转换的 MySQL 特有语法
+
+---
+
+## 2026-02-07 - US-008
+- 创建了 mapper/postgres/XxlJobLogGlueMapper.xml
+- 从 MySQL 版本转换了全部 SQL 语句（save、findByJobId、removeOld、deleteByJobId）
+- 移除了反引号包裹的列名（job_id）
+- removeOld 中 LIMIT 0, #{limit} → LIMIT #{limit}（offset 为 0 时省略）
+- 移除了注释掉的 selectKey 代码块
+- INSERT 语句末尾移除了分号（PostgreSQL MyBatis 最佳实践）
+- 保持 namespace 和 resultMap 与 MySQL 版本一致
+- Files changed: xxl-job-admin/src/main/resources/mapper/postgres/XxlJobLogGlueMapper.xml (新建)
+- **Learnings for future iterations:**
+  - XxlJobLogGlueMapper 较简单，只有 4 个 SQL 语句
+  - removeOld 使用子查询嵌套（SELECT id FROM (SELECT ... LIMIT) t1）在 PostgreSQL 中同样有效
+  - 该 Mapper 没有使用 CONCAT、日期函数等需要特殊转换的 MySQL 语法，主要转换点是反引号和 LIMIT 语法
+
+---
