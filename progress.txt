@@ -5,7 +5,7 @@
   - **必须移除所有注释**，因为 TestContainers 的脚本解析器会将注释与后续 SQL 语句合并
   - **每个 SQL 语句必须以分号结尾**
   - **移除 CREATE database、use 和 commit; 语句**
-- MapperITBase 使用 @MybatisTest + @AutoConfigureTestDatabase(replace=NONE) + @Transactional
+- MapperITBase 使用 @MybatisTest + @Transactional（Spring Boot 4.x 已移除 @AutoConfigureTestDatabase）
 - @DynamicPropertySource 需配置 mybatis.mapper-locations 和 hikari.maximum-pool-size=5
 - **Mapper XML 目录结构：** mapper/mysql/ 和 mapper/postgres/ 分别存放对应数据库的 Mapper XML
 - TestFixtures 提供 6 个工厂方法：createJobGroup、createJobInfo、createJobLog、createLogGlue、createLogReport、createUser
@@ -28,6 +28,8 @@
   - DATE_ADD(date, INTERVAL -N SECOND) → date - N * INTERVAL '1 SECOND'
 - **数据库类型切换：** xxl.job.db.type 配置项控制数据库类型，mybatis.mapper-locations 使用 ${xxl.job.db.type:mysql} 属性占位符动态解析
 - **MyBatisConfig 配置类：** 位于 scheduler/config 包，负责日志输出和 db.type 验证
+- **maven.test.skip：** 父 POM 设置了 maven.test.skip=true，编译/运行测试需要 -Dmaven.test.skip=false
+- **PostgreSQL 测试基础设施：** PostgreSQLContainerHolder（Singleton 容器）+ PostgresMapperITBase（@MybatisTest + @Transactional + @DynamicPropertySource）
 
 ---
 
@@ -221,5 +223,26 @@
   - 测试 DDL 脚本不需要 CREATE database 和 commit 语句，Testcontainers 自动处理
   - 测试数据应尽量简化，避免中文字符和复杂 JSON，减少编码和解析问题
   - xxl-job-admin/src/test/resources/ 目录之前不存在，需要手动创建
+
+---
+
+## 2026-02-07 - US-014
+- 创建了 PostgreSQLContainerHolder 类（com.xxl.job.admin.testcontainers 包）
+  - 使用 Singleton 模式（static final + static initializer）
+  - 使用 postgres:15-alpine 镜像
+  - withDatabaseName("xxl_job") 和 withInitScript("db/tables_xxl_job_postgres.sql")
+- 创建了 PostgresMapperITBase 抽象基类
+  - 使用 @MybatisTest + @Transactional 注解
+  - @DynamicPropertySource 配置 PostgreSQL 数据源、xxl.job.db.type=postgres、mybatis.mapper-locations
+  - 配置 hikari.maximum-pool-size=5
+- mvn test-compile 通过（需要 -Dmaven.test.skip=false 覆盖父 POM 设置）
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/testcontainers/PostgreSQLContainerHolder.java (新建)
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/testcontainers/PostgresMapperITBase.java (新建)
+- **Learnings for future iterations:**
+  - Spring Boot 4.x 已移除 @AutoConfigureTestDatabase 注解，不再需要 replace=NONE 配置
+  - 父 POM 设置了 maven.test.skip=true，编译测试代码需要 -Dmaven.test.skip=false
+  - @MybatisTest 在 Spring Boot 4.x 中不再自动引入 @AutoConfigureTestDatabase
+  - testcontainers 包放在 com.xxl.job.admin.testcontainers 下，与 mapper 测试包分离
 
 ---
