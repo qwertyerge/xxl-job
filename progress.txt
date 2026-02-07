@@ -1,0 +1,13 @@
+## Codebase Patterns
+- 编译器配置：Spring Boot 4.x BOM 会覆盖 maven.compiler.source/target 属性，需要在 maven-compiler-plugin 配置中直接硬编码 Java 版本
+- TestContainers Singleton 模式：使用 static final + static initializer 启动容器，整个 JVM 只启动一次
+- **TestContainers SQL 初始化脚本要求：**
+  - **必须移除所有注释**，因为 TestContainers 的脚本解析器会将注释与后续 SQL 语句合并
+  - **每个 SQL 语句必须以分号结尾**
+  - **移除 CREATE database、use 和 commit; 语句**
+- MapperITBase 使用 @MybatisTest + @AutoConfigureTestDatabase(replace=NONE) + @Transactional
+- @DynamicPropertySource 需配置 mybatis.mapper-locations 和 hikari.maximum-pool-size=5
+- TestFixtures 提供 6 个工厂方法：createJobGroup、createJobInfo、createJobLog、createLogGlue、createLogReport、createUser
+- **测试数据长度限制：** XxlJobGroup.title 是 varchar(12)，测试数据必须 ≤12 个字符
+
+---
