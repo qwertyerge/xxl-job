@@ -35,6 +35,8 @@
 - **Spring Boot 4.x BOM 覆盖 Testcontainers 核心版本：** Spring Boot 4.0.1 BOM 将 testcontainers 核心升级到 2.0.3，需要在父 POM dependencyManagement 中显式固定 org.testcontainers:testcontainers 版本
 - **测试 Logback 配置：** 需要 src/test/resources/logback-test.xml 覆盖生产 logback.xml，避免写入 /data/applogs 目录
 - **运行单个测试类：** mvn test -Dtest="ClassName" -Dsurefire.failIfNoSpecifiedTests=false 避免其他模块报错
+- **PostgreSQL INTERVAL 参数绑定：** MyBatis 的 `#{timeout} * INTERVAL '1 SECOND'` 在 PostgreSQL 中因运算优先级和类型推断问题会失败，需要使用 `CAST(#{timeout} AS INTEGER) * INTERVAL '1 SECOND'` 并用括号包裹：`(CAST(#{timeout} AS TIMESTAMP) - (CAST(#{timeout} AS INTEGER) * INTERVAL '1 SECOND'))`
+- **PostgreSQL SUM 空表返回 NULL：** `SUM()` 对空表返回 NULL 而非 0，MyBatis resultMap 映射时会返回 null 对象
 
 ---
 
@@ -341,5 +343,32 @@
   - PostgreSQL 支持 SET lock_timeout = '500ms' 设置锁等待超时，超时后抛出 SQLException
   - xxl_job_lock 表种子数据已包含 'schedule_lock' 行，测试可直接使用
   - resultType="java.lang.String" 的 SELECT * 查询返回第一列的值（lock_name）
+
+---
+
+## 2026-02-08 - US-019
+- 创建了 4 个 PostgreSQL 集成测试类，覆盖剩余全部 Mapper：
+  - XxlJobLogGlueMapperPostgresIT.java（10 个测试）：save、findByJobId（含排序验证）、removeOld（含边界条件）、deleteByJobId
+  - XxlJobLogReportMapperPostgresIT.java（7 个测试）：saveOrUpdate（插入和更新）、queryLogReport（日期范围、排序、空结果）、queryLogReportTotal
+  - XxlJobRegistryMapperPostgresIT.java（11 个测试）：registrySaveOrUpdate（插入和更新）、registryDelete、removeByRegistryGroupAndKey、findDead、removeDead、findAll（含过期过滤）
+  - XxlJobUserMapperPostgresIT.java（13 个测试）：save、loadById、loadByUserName、update（含密码为空不更新）、delete、updateToken、pageList/pageListCount（含 username 和 role 过滤）
+- 修复了 XxlJobRegistryMapper.xml（PostgreSQL 版本）中的 INTERVAL 参数绑定问题：
+  - 原始语法 `#{timeout} * INTERVAL '1 SECOND'` 因 MyBatis 参数绑定和 PostgreSQL 类型推断问题导致 `timestamp < interval` 错误
+  - 修复为 `(CAST(#{timeout} AS INTEGER) * INTERVAL '1 SECOND')` 并用括号确保运算优先级
+- 全部 92 个 PostgreSQL 集成测试通过（8 个 Mapper × 平均 11.5 个测试），mvn compile 通过
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobLogGlueMapperPostgresIT.java (新建)
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobLogReportMapperPostgresIT.java (新建)
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobRegistryMapperPostgresIT.java (新建)
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobUserMapperPostgresIT.java (新建)
+  - xxl-job-admin/src/main/resources/mapper/postgres/XxlJobRegistryMapper.xml (修复 INTERVAL 语法)
+- **Learnings for future iterations:**
+  - PostgreSQL 中 MyBatis `#{param}` 绑定的 int 参数与 `INTERVAL '1 SECOND'` 相乘时，需要显式 CAST 为 INTEGER 并用括号包裹，否则 PostgreSQL 无法正确推断类型
+  - `SUM()` 对空表返回 NULL，MyBatis resultMap 映射时会返回 null 对象，测试需要先插入数据再验证聚合查询
+  - XxlJobLogGlue 表没有种子数据，测试不需要考虑已有数据
+  - xxl_job_user 表有 1 条种子数据（admin 用户），测试 loadByUserName 可直接使用
+  - xxl_job_log_report 表没有种子数据
+  - xxl_job_registry 表没有种子数据
+  - findAll 的 timeout 参数含义是"最近 N 秒内更新的记录"，测试时需要传入合理的 timeout 值（如 90）和当前时间
 
 ---
