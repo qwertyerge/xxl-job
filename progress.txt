@@ -72,3 +72,18 @@
   - PostgreSQL 不使用反引号包裹列名，直接使用列名即可
 
 ---
+
+## 2026-02-07 - US-005
+- 创建了 mapper/postgres/XxlJobInfoMapper.xml
+- 从 MySQL 版本转换：分页语法 LIMIT #{offset}, #{pagesize} → LIMIT #{pagesize} OFFSET #{offset}
+- 转换字符串拼接：CONCAT(CONCAT('%', #{xxx}), '%') → '%' || #{xxx} || '%'（pageList 和 pageListCount 中的 jobDesc、executorHandler、author 三个字段）
+- 保持 useGeneratedKeys="true" keyProperty="id" 配置不变（PostgreSQL 支持 RETURNING）
+- 移除了 MySQL 版本中注释掉的 selectKey 和 scheduleUpdateBatch 代码块
+- scheduleJobQuery 中的 LIMIT #{pagesize} 保持不变（无 offset，PostgreSQL 语法相同）
+- Files changed: xxl-job-admin/src/main/resources/mapper/postgres/XxlJobInfoMapper.xml (新建)
+- **Learnings for future iterations:**
+  - XxlJobInfoMapper 是字段最多的 Mapper（23 个字段），转换时需仔细核对每个字段
+  - scheduleJobQuery 只有 LIMIT 没有 OFFSET，PostgreSQL 和 MySQL 语法一致，无需转换
+  - MySQL 版本中注释掉的代码（如 selectKey、scheduleUpdateBatch）在 PostgreSQL 版本中直接省略即可
+
+---
