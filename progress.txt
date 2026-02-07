@@ -319,3 +319,27 @@
   - delete 方法按 job_id 删除（不是按主键 id），一次可删除多条记录
 
 ---
+
+## 2026-02-08 - US-018
+- 创建了 XxlJobLockMapperPostgresIT.java 继承 PostgresMapperITBase
+- 测试覆盖 3 个测试方法：
+  - scheduleLock_shouldReturnLockRow：验证 scheduleLock() 返回非空结果
+  - scheduleLock_shouldReturnScheduleLockName：验证返回值为 "schedule_lock"
+  - scheduleLock_shouldBlockConcurrentAccess：验证 SELECT ... FOR UPDATE 的并发锁行为
+    - 使用两个线程模拟并发访问
+    - 线程 1 获取 FOR UPDATE 锁并持有
+    - 线程 2 尝试获取同一行锁，设置 lock_timeout='500ms'
+    - 验证线程 2 因锁超时而被阻塞
+- 并发锁测试使用 @Transactional(propagation = Propagation.NOT_SUPPORTED) 禁用 Spring 事务管理，直接通过 JDBC Connection 控制事务
+- 所有 3 个测试通过，mvn compile 通过
+- Files changed:
+  - xxl-job-admin/src/test/java/com/xxl/job/admin/mapper/XxlJobLockMapperPostgresIT.java (新建)
+- **Learnings for future iterations:**
+  - XxlJobLockMapper 只有一个方法 scheduleLock()，是最简单的 Mapper
+  - SELECT ... FOR UPDATE 在 PostgreSQL 中完全兼容，无需任何 SQL 转换
+  - 测试并发锁需要禁用 Spring @Transactional（使用 Propagation.NOT_SUPPORTED），否则所有操作在同一事务中无法模拟并发
+  - PostgreSQL 支持 SET lock_timeout = '500ms' 设置锁等待超时，超时后抛出 SQLException
+  - xxl_job_lock 表种子数据已包含 'schedule_lock' 行，测试可直接使用
+  - resultType="java.lang.String" 的 SELECT * 查询返回第一列的值（lock_name）
+
+---
