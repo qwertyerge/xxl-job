@@ -1,0 +1,70 @@
+# PostgreSQL playground for xxl-job-admin
+#
+# Usage:
+#   1. mvn package -pl xxl-job-admin -am -Dmaven.test.skip=true
+#   2. docker compose -f docker-compose-postgres.yml up -d
+#   3. xxl-job-admin: http://localhost:8080/xxl-job-admin  (admin / 123456)
+#      pgAdmin:       http://localhost:5050               (admin@xxl.io / pgadmin)
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    container_name: xxl-job-postgres
+    environment:
+      POSTGRES_DB: xxl_job
+      POSTGRES_USER: xxl
+      POSTGRES_PASSWORD: xxl_pwd
+    volumes:
+      - ./doc/db/tables_xxl_job_postgres.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - pgdata:/var/lib/postgresql/data
+    # no ports exposed — access only via internal network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U xxl -d xxl_job"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - xxl-job-pg
+
+  xxl-job-admin:
+    image: xxl-job-admin
+    build:
+      context: ./xxl-job-admin
+      dockerfile: Dockerfile
+    container_name: xxl-job-admin-pg
+    environment:
+      DB_TYPE: postgres
+      DB_HOST: postgres
+      DB_USER: xxl
+      DB_PASSWORD: xxl_pwd
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - xxl-job-pg
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: xxl-job-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@xxl.io
+      PGADMIN_DEFAULT_PASSWORD: pgadmin
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    ports:
+      - "5050:80"
+    volumes:
+      - ./doc/pgadmin-servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - xxl-job-pg
+
+volumes:
+  pgdata:
+
+networks:
+  xxl-job-pg:
+    driver: bridge

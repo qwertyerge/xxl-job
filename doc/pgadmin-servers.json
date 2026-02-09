@@ -1,0 +1,13 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "xxl-job",
+      "Group": "Servers",
+      "Host": "postgres",
+      "Port": 5432,
+      "MaintenanceDB": "xxl_job",
+      "Username": "xxl",
+      "SSLMode": "prefer"
+    }
+  }
+}
